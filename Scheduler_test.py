@@ -7,7 +7,7 @@ Run this file while the Flask app (Scheduler_API.py) is running.
 import requests
 
 BASE_URL = "http://127.0.0.1:5000"
-separator = 150
+separator = 120
 
 
 def test_schedule_meeting(data):
