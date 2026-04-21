@@ -1,0 +1,23 @@
+- Technologies
+- Work division
+- Github Repo (contributers, main branch protection rule)
+
+https://github.com/solomonyaa
+
+- Technologies
+app - python
+containerization - docker 
+IaaC - terraform
+Cloud - AWS
+version control - git, github
+CI / CD - github actions
+Data Base - ?
+
+- Work division
+Solomon: Python app (flask API), frontend (HTML, CSS, JS)
+
+Shay: Terraform, 
+
+
+
+
