@@ -2,9 +2,9 @@ from flask import Flask, request, jsonify
 from Task_Module import Task, Category, Priority
 from datetime import datetime
 from typing import Dict
+from openai import OpenAI
 
 app = Flask(__name__)
-
 tasks: Dict[int, Task] = {}
 
 
@@ -139,5 +139,49 @@ def set_task_complete(task_id):
     return jsonify({"success": True, "task": tasks[task_id].to_dict()}), 200
 
 
+@app.route('/task/<int:task_id>/ask', methods=['POST'])
+def ask_about_task(task_id):
+    if task_id not in tasks:
+        return jsonify({"error": "Task not found"}), 404
+
+    data = request.get_json()
+    if not data or 'question' not in data:
+        return jsonify({"error": "Missing required field: question"}), 400
+
+    client = OpenAI()
+    task = tasks[task_id]
+
+    system_prompt = (
+        "You are a productivity assistant. "
+        "The user will ask you about a task they need to complete. "
+        "Give practical, concise advice on how to best do it."
+    )
+
+    user_prompt = (
+        f"Task: {task.title}\n"
+        f"Details: {task.details}\n"
+        f"Due date: {task.due_date}\n"
+        f"Priority: {task.priority.value}\n"
+        f"Category: {task.category.value}\n\n"
+        f"Question: {data['question']}"
+    )
+
+    # noinspection PyTypeChecker
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.5
+    )
+
+    # noinspection PyUnresolvedReferences
+    answer = response.choices[0].message.content
+    return jsonify({"task_id": task_id, "question": data['question'], "answer": answer}), 200
+
+
 if __name__ == '__main__':
     app.run(debug=True)
+
+# TODO: add user authentication and task sharing
