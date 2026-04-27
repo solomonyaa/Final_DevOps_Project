@@ -1,9 +1,5 @@
 from datetime import datetime
 from enum import Enum
-import re
-
-date_pattern = re.compile(r'^\d{2}/\d{2}/\d{4}$')
-date_format = "%d/%m/%Y"
 
 
 class Priority(Enum):
@@ -20,13 +16,16 @@ class Category(Enum):
 
 class Task:
     static_id = 1
+    date_format = "%d/%m/%Y"
 
     def __init__(self, title, details, due_date, category, priority):
         if not isinstance(title, str):
             raise TypeError("Title must be a string")
         if not isinstance(details, str):
             raise TypeError("Details must be a string")
-        if not isinstance(due_date, str) or not date_pattern.fullmatch(due_date):
+        try:
+            datetime.strptime(due_date, Task.date_format)
+        except ValueError:
             raise ValueError(f"Incorrect format of due date: {due_date}")
 
         self.id = Task.static_id
@@ -54,7 +53,7 @@ class Task:
             "title": self.title,
             "details": self.details,
             "due_date": self.due_date,
-            "isComplete": self.is_complete,
+            "is_complete": self.is_complete,
             "category": self.category.value,
             "priority": self.priority.value
         }
@@ -62,16 +61,16 @@ class Task:
     def __lt__(self, other):
         if not isinstance(other, Task):
             return NotImplemented
-        return (datetime.strptime(self.due_date, date_format) <
-                datetime.strptime(other.due_date, date_format))
+        return (datetime.strptime(self.due_date, Task.date_format) <
+                datetime.strptime(other.due_date, Task.date_format))
 
     def __gt__(self, other):
         if not isinstance(other, Task):
             return NotImplemented
-        return (datetime.strptime(self.due_date, date_format) >
-                datetime.strptime(other.due_date, date_format))
+        return (datetime.strptime(self.due_date, Task.date_format) >
+                datetime.strptime(other.due_date, Task.date_format))
 
     def __eq__(self, other):
         if not isinstance(other, Task):
             return False
-        return self.id == other.id  # Fix: was self.task_id which doesn't exist
+        return self.id == other.id
