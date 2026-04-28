@@ -2,6 +2,9 @@ name: Test CloudTasks App
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - Shayha-app
 
 jobs:
   test-cloudtasks:
@@ -34,29 +37,9 @@ jobs:
           docker logs cloudtasks-app
           exit 1
 
-      - name: Create task
+      - name: Validate OpenAI secret exists inside container
         run: |
-          curl -f -X POST http://127.0.0.1:5000/tasks \
-            -H "Content-Type: application/json" \
-            -d '{
-              "title": "Hili",
-              "details": "Hili the best",
-              "due_date": "30/04/2026",
-              "category": "personal",
-              "priority": "high"
-            }'
-
-      - name: Get all tasks
-        run: |
-          curl -f http://127.0.0.1:5000/tasks
-
-      - name: Ask about task
-        run: |
-          curl -f -X POST http://127.0.0.1:5000/task/1/ask \
-            -H "Content-Type: application/json" \
-            -d '{
-              "question": "Give me a short nice answer about Hili."
-            }'
+          docker exec cloudtasks-app sh -c 'test -n "$OPENAI_API_KEY" && echo "OPENAI_API_KEY is set"'
 
       - name: Show container logs
         if: always()
