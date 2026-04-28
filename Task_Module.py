@@ -1,28 +1,36 @@
 from datetime import datetime
 from enum import Enum
 
-
 class Priority(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-
 
 class Category(Enum):
     PERSONAL = "personal"
     WORK = "work"
     SHOPPING = "shopping"
 
-
 class Task:
     static_id = 1
     date_format = "%d/%m/%Y"
+    
+    MAX_LENGTHS = {
+        'title': 100,
+        'details': 500,
+    }
 
     def __init__(self, title, details, due_date, category, priority):
         if not isinstance(title, str):
             raise TypeError("Title must be a string")
         if not isinstance(details, str):
             raise TypeError("Details must be a string")
+        
+        if len(title) > Task.MAX_LENGTHS['title']:
+            raise ValueError(f"Title exceeds max length of {Task.MAX_LENGTHS['title']} characters")
+        if len(details) > Task.MAX_LENGTHS['details']:
+            raise ValueError(f"Details exceeds max length of {Task.MAX_LENGTHS['details']} characters")
+
         try:
             datetime.strptime(due_date, Task.date_format)
         except ValueError:
@@ -61,7 +69,7 @@ class Task:
     def __lt__(self, other):
         if not isinstance(other, Task):
             return NotImplemented
-        return (datetime.strptime(self.due_date, Task.date_format) <
+        return (datetime.strptime(self.due_date, Task.date_format) 
                 datetime.strptime(other.due_date, Task.date_format))
 
     def __gt__(self, other):
