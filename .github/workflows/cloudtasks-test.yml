@@ -37,9 +37,40 @@ jobs:
           docker logs cloudtasks-app
           exit 1
 
-      - name: Validate OpenAI secret exists inside container
+      - name: Create task
         run: |
-          docker exec cloudtasks-app sh -c 'test -n "$OPENAI_API_KEY" && echo "OPENAI_API_KEY is set"'
+          echo "Creating task..."
+          curl -sS -f -X POST http://127.0.0.1:5000/tasks \
+            -H "Content-Type: application/json" \
+            -d '{
+              "title": "Hili",
+              "details": "Hili the best",
+              "due_date": "30/04/2026",
+              "category": "personal",
+              "priority": "high"
+            }' | tee create_task_response.json
+
+          echo ""
+          echo "Created task response:"
+          cat create_task_response.json
+
+      - name: Ask about task and show output
+        run: |
+          echo "Asking OpenAI about task 1..."
+          curl -sS -f -X POST http://127.0.0.1:5000/task/1/ask \
+            -H "Content-Type: application/json" \
+            -d '{
+              "question": "Give me a short nice answer about Hili."
+            }' | tee ask_response.json
+
+          echo ""
+          echo "Ask response:"
+          cat ask_response.json
+
+          echo "### Ask response" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat ask_response.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Show container logs
         if: always()
