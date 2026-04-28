@@ -16,7 +16,7 @@ class Task:
     date_format = "%d/%m/%Y"
     
     MAX_LENGTHS = {
-        'title': 100,
+        'title': 30,
         'details': 500,
     }
 
