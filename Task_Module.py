@@ -69,7 +69,7 @@ class Task:
     def __lt__(self, other):
         if not isinstance(other, Task):
             return NotImplemented
-        return (datetime.strptime(self.due_date, Task.date_format) 
+        return (datetime.strptime(self.due_date, Task.date_format) <
                 datetime.strptime(other.due_date, Task.date_format))
 
     def __gt__(self, other):
