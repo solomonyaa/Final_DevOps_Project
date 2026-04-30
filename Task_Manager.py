@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict
 from openai import OpenAI
 
+
 app = Flask(__name__)
 tasks: Dict[int, Task] = {}
 
@@ -59,12 +60,15 @@ def get_tasks():
     is_complete = request.args.get('is_complete')
 
     if category:
-        filtered_tasks = [t for t in filtered_tasks if t.category.value == category]
+        filtered_tasks = [
+            t for t in filtered_tasks if t.category.value == category]
     if priority:
-        filtered_tasks = [t for t in filtered_tasks if t.priority.value == priority]
+        filtered_tasks = [
+            t for t in filtered_tasks if t.priority.value == priority]
     if is_complete is not None:
         complete_bool = is_complete.lower() == 'true'
-        filtered_tasks = [t for t in filtered_tasks if t.is_complete == complete_bool]
+        filtered_tasks = [
+            t for t in filtered_tasks if t.is_complete == complete_bool]
 
     if not filtered_tasks:
         return jsonify({"error": "No tasks found"}), 404
@@ -182,6 +186,7 @@ def ask_about_task(task_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True)
+
 
 # TODO: add user authentication and task sharing
