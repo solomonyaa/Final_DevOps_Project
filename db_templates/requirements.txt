@@ -1,0 +1,5 @@
+flask
+openai
+werkzeug
+flask-sqlalchemy
+psycopg2-binary
