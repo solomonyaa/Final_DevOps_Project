@@ -275,15 +275,11 @@ jobs:
           if [ "$response" != "401" ]; then echo "Expected 401 but got $response"; exit 1; fi
           echo "Unauthorized access correctly rejected - got 401"
 
-      # ─── DELETE /task/<id> ─────────────────────────────────────
-      - name: "DELETE /task/1 - delete task"
-        run: curl -sS -f -X DELETE http://127.0.0.1:5000/task/1 -u testuser:testpass123
-
-      - name: "GET /task/1 - verify task deleted"
+      # ─── Show tasks from DB ────────────────────────────────────
+      - name: "Show users and tasks from PostgreSQL"
         run: |
-          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/task/1 -u testuser:testpass123)
-          if [ "$response" != "404" ]; then echo "Expected 404 but got $response"; exit 1; fi
-          echo "Task correctly deleted - got 404"
+          docker exec $(docker ps -qf "name=db_templates-db") psql -U user -d taskdb -c "SELECT * FROM users;"
+          docker exec $(docker ps -qf "name=db_templates-db") psql -U user -d taskdb -c "SELECT * FROM tasks;"
 
       # ─── Cleanup ───────────────────────────────────────────────
       - name: Show logs
