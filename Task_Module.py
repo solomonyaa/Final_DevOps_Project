@@ -1,20 +1,23 @@
 from datetime import datetime
 from enum import Enum
 
+
 class Priority(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
 
 class Category(Enum):
     PERSONAL = "personal"
     WORK = "work"
     SHOPPING = "shopping"
 
+
 class Task:
     static_id = 1
     date_format = "%d/%m/%Y"
-    
+
     MAX_LENGTHS = {
         'title': 30,
         'details': 500,
@@ -25,7 +28,7 @@ class Task:
             raise TypeError("Title must be a string")
         if not isinstance(details, str):
             raise TypeError("Details must be a string")
-        
+
         if len(title) > Task.MAX_LENGTHS['title']:
             raise ValueError(f"Title exceeds max length of {Task.MAX_LENGTHS['title']} characters")
         if len(details) > Task.MAX_LENGTHS['details']:
