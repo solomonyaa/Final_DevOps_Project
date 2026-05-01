@@ -1,11 +1,35 @@
 from flask import Flask, request, jsonify
 from Task_Module import Task, Category, Priority
+from User_Module import User
 from datetime import datetime
 from typing import Dict
 from openai import OpenAI
+import functools
 
 app = Flask(__name__)
 tasks: Dict[int, Task] = {}
+users: Dict[str, User] = {}
+_openai_client = None
+
+
+def get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI()
+    return _openai_client
+
+
+def require_auth(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        auth = request.authorization
+        if not auth or auth.username not in users:
+            return jsonify({"error": "Authentication required"}), 401
+        user = users[auth.username]
+        if not user.check_password(auth.password):
+            return jsonify({"error": "Invalid username or password"}), 401
+        return f(*args, **kwargs, current_user=user)
+    return wrapper
 
 
 def is_valid_date(date_str, fmt=Task.date_format):
@@ -21,8 +45,26 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
+@app.route('/users/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid or missing JSON"}), 400
+    if 'username' not in data or 'password' not in data:
+        return jsonify({"error": "Missing required fields: username, password"}), 400
+    if data['username'] in users:
+        return jsonify({"error": "Username already exists"}), 409
+    try:
+        user = User(data['username'], data['password'])
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    users[user.username] = user
+    return jsonify(user.to_dict()), 201
+
+
 @app.route('/tasks', methods=['POST'])
-def create_task():
+@require_auth
+def create_task(current_user):
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid or missing JSON"}), 400
@@ -41,7 +83,8 @@ def create_task():
             data['details'],
             data['due_date'],
             data['category'],
-            data['priority']
+            data['priority'],
+            current_user.id
         )
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
@@ -51,8 +94,9 @@ def create_task():
 
 
 @app.route('/tasks', methods=['GET'])
-def get_tasks():
-    filtered_tasks = list(tasks.values())
+@require_auth
+def get_tasks(current_user):
+    filtered_tasks = [t for t in tasks.values() if t.user_id == current_user.id]
 
     category = request.args.get('category')
     priority = request.args.get('priority')
@@ -73,23 +117,25 @@ def get_tasks():
 
 
 @app.route('/task/<int:task_id>', methods=['GET'])
-def get_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def get_task(task_id, current_user):
+    task = tasks.get(task_id)
+    if not task or task.user_id != current_user.id:
         return jsonify({"error": "Task not found"}), 404
 
-    return jsonify(tasks[task_id].to_dict()), 200
+    return jsonify(task.to_dict()), 200
 
 
 @app.route('/task/<int:task_id>', methods=['PATCH'])
-def edit_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def edit_task(task_id, current_user):
+    task = tasks.get(task_id)
+    if not task or task.user_id != current_user.id:
         return jsonify({"error": "Task not found"}), 404
 
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid or missing JSON"}), 400
-
-    task = tasks[task_id]
 
     editable_fields = ["title", "details", "due_date", "category", "priority"]
     for field in editable_fields:
@@ -115,8 +161,10 @@ def edit_task(task_id):
 
 
 @app.route('/task/<int:task_id>', methods=['DELETE'])
-def delete_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def delete_task(task_id, current_user):
+    task = tasks.get(task_id)
+    if not task or task.user_id != current_user.id:
         return jsonify({"error": "Task not found"}), 404
 
     tasks.pop(task_id)
@@ -124,8 +172,10 @@ def delete_task(task_id):
 
 
 @app.route('/task/<int:task_id>/complete', methods=['PATCH'])
-def set_task_complete(task_id):
-    if task_id not in tasks:
+@require_auth
+def set_task_complete(task_id, current_user):
+    task = tasks.get(task_id)
+    if not task or task.user_id != current_user.id:
         return jsonify({"error": "Task not found"}), 404
 
     data = request.get_json()
@@ -135,21 +185,20 @@ def set_task_complete(task_id):
     if not isinstance(data['is_complete'], bool):
         return jsonify({"error": "is_complete must be a boolean"}), 400
 
-    tasks[task_id].is_complete = data['is_complete']
-    return jsonify({"success": True, "task": tasks[task_id].to_dict()}), 200
+    task.is_complete = data['is_complete']
+    return jsonify({"success": True, "task": task.to_dict()}), 200
 
 
 @app.route('/task/<int:task_id>/ask', methods=['POST'])
-def ask_about_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def ask_about_task(task_id, current_user):
+    task = tasks.get(task_id)
+    if not task or task.user_id != current_user.id:
         return jsonify({"error": "Task not found"}), 404
 
     data = request.get_json()
     if not data or 'question' not in data:
         return jsonify({"error": "Missing required field: question"}), 400
-
-    client = OpenAI()
-    task = tasks[task_id]
 
     system_prompt = (
         "You are a productivity assistant. "
@@ -166,8 +215,7 @@ def ask_about_task(task_id):
         f"Question: {data['question']}"
     )
 
-    # noinspection PyTypeChecker
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -176,12 +224,9 @@ def ask_about_task(task_id):
         temperature=0.5
     )
 
-    # noinspection PyUnresolvedReferences
     answer = response.choices[0].message.content
     return jsonify({"task_id": task_id, "question": data['question'], "answer": answer}), 200
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-# TODO: add user authentication and task sharing
+    app.run(host='0.0.0.0', debug=True)

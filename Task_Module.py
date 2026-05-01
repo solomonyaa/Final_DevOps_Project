@@ -20,7 +20,7 @@ class Task:
         'details': 500,
     }
 
-    def __init__(self, title, details, due_date, category, priority):
+    def __init__(self, title, details, due_date, category, priority, user_id):
         if not isinstance(title, str):
             raise TypeError("Title must be a string")
         if not isinstance(details, str):
@@ -44,6 +44,7 @@ class Task:
         self.due_date = due_date
         self.category = Category(category)
         self.priority = Priority(priority)
+        self.user_id = user_id
 
     def __str__(self):
         return (
@@ -63,13 +64,14 @@ class Task:
             "due_date": self.due_date,
             "is_complete": self.is_complete,
             "category": self.category.value,
-            "priority": self.priority.value
+            "priority": self.priority.value,
+            "user_id": self.user_id
         }
 
     def __lt__(self, other):
         if not isinstance(other, Task):
             return NotImplemented
-        return (datetime.strptime(self.due_date, Task.date_format) 
+        return (datetime.strptime(self.due_date, Task.date_format) <
                 datetime.strptime(other.due_date, Task.date_format))
 
     def __gt__(self, other):
