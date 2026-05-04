@@ -1,8 +1,14 @@
+from db import db
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-class User:
-    static_id = 1
+class User(db.Model):
+    __tablename__ = 'users'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    tasks = db.relationship('Task', backref='user', lazy=True)
 
     def __init__(self, username, password):
         if not isinstance(username, str) or not username.strip():
@@ -10,8 +16,6 @@ class User:
         if not isinstance(password, str) or len(password) < 6:
             raise ValueError("Password must be at least 6 characters")
 
-        self.id = User.static_id
-        User.static_id += 1
         self.username = username
         self.password_hash = generate_password_hash(password)
 
