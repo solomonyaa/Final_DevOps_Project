@@ -98,8 +98,8 @@ jobs:
 
       - name: "Show users and tasks from PostgreSQL"
         run: |
-          docker exec CloudsTasks-db-1 psql -U user -d taskdb -c "SELECT * FROM users;"
-          docker exec CloudsTasks-db-1 psql -U user -d taskdb -c "SELECT * FROM tasks;"
+          docker exec cloudstasks-db-1 psql -U user -d taskdb -c "SELECT * FROM users;"
+          docker exec cloudstasks-db-1 psql -U user -d taskdb -c "SELECT * FROM tasks;"
 
       # ─── Cleanup ───────────────────────────────────────────────
       - name: Show logs
