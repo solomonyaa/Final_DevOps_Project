@@ -1,4 +1,4 @@
-name: Login to Dockerhub, Build, Push
+name: CD Workflow - Login to Dockerhub, Build, Push
 on:
   push:
     branches:
