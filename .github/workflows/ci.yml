@@ -92,6 +92,10 @@ jobs:
           echo "Unauthorized access correctly rejected - got 401"
 
       # ─── Show tasks from DB ────────────────────────────────────
+      # ─── Show tasks from DB ────────────────────────────────────
+      - name: "Debug - list running containers"
+        run: docker ps --format '{{.Names}}'
+
       - name: "Show users and tasks from PostgreSQL"
         run: |
           docker exec CloudsTasks-db-1 psql -U user -d taskdb -c "SELECT * FROM users;"
