@@ -6,6 +6,7 @@ from datetime import datetime
 from openai import OpenAI
 import functools
 
+
 app = Flask(__name__)
 init_db(app)
 
@@ -140,7 +141,8 @@ def edit_task(task_id, current_user):
 @app.route('/task/<int:task_id>', methods=['DELETE'])
 @require_auth
 def delete_task(task_id, current_user):
-    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()\
+
     if not task:
         return jsonify({"error": "Task not found"}), 404
     db.session.delete(task)

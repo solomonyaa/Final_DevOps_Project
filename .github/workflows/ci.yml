@@ -92,7 +92,6 @@ jobs:
           echo "Unauthorized access correctly rejected - got 401"
 
       # ─── Show tasks from DB ────────────────────────────────────
-      # ─── Show tasks from DB ────────────────────────────────────
       - name: "Debug - list running containers"
         run: docker ps --format '{{.Names}}'
 
