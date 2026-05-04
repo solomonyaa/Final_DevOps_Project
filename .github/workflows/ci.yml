@@ -204,7 +204,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Start PostgreSQL stack
-        run: docker compose -f db_templates/docker-compose.yml up -d --build
+        run: docker compose -f docker-compose.yml up -d --build
 
       - name: Wait for Flask app
         run: |
@@ -217,7 +217,7 @@ jobs:
             sleep 3
           done
           echo "App failed to start"
-          docker compose -f db_templates/docker-compose.yml logs
+          docker compose -f docker-compose.yml logs
           exit 1
 
       # ─── GET /health ───────────────────────────────────────────
@@ -284,8 +284,8 @@ jobs:
       # ─── Cleanup ───────────────────────────────────────────────
       - name: Show logs
         if: always()
-        run: docker compose -f db_templates/docker-compose.yml logs
+        run: docker compose -f docker-compose.yml logs
 
       - name: Stop stack
         if: always()
-        run: docker compose -f db_templates/docker-compose.yml down
+        run: docker compose -f docker-compose.yml down
