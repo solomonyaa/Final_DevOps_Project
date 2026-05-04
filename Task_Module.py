@@ -1,3 +1,4 @@
+from db import db
 from datetime import datetime
 from enum import Enum
 
@@ -14,51 +15,41 @@ class Category(Enum):
     SHOPPING = "shopping"
 
 
-class Task:
-    static_id = 1
+class Task(db.Model):
+    __tablename__ = 'tasks'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title = db.Column(db.String(30), nullable=False)
+    details = db.Column(db.String(500), nullable=False)
+    due_date = db.Column(db.String(10), nullable=False)
+    is_complete = db.Column(db.Boolean, default=False)
+    category = db.Column(db.String(20), nullable=False)
+    priority = db.Column(db.String(10), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
     date_format = "%d/%m/%Y"
 
-    MAX_LENGTHS = {
-        'title': 30,
-        'details': 500,
-    }
-
-    def __init__(self, title, details, due_date, category, priority):
+    def __init__(self, title, details, due_date, category, priority, user_id):
         if not isinstance(title, str):
             raise TypeError("Title must be a string")
         if not isinstance(details, str):
             raise TypeError("Details must be a string")
-
-        if len(title) > Task.MAX_LENGTHS['title']:
-            raise ValueError(
-                f"Title exceeds max length of {Task.MAX_LENGTHS['title']} characters")
-        if len(details) > Task.MAX_LENGTHS['details']:
-            raise ValueError(
-                f"Details exceeds max length of {Task.MAX_LENGTHS['details']} characters")
+        if len(title) > 30:
+            raise ValueError("Title exceeds max length of 30 characters")
+        if len(details) > 500:
+            raise ValueError("Details exceeds max length of 500 characters")
 
         try:
-            datetime.strptime(due_date, Task.date_format)
+            datetime.strptime(due_date, self.date_format)
         except ValueError:
             raise ValueError(f"Incorrect format of due date: {due_date}")
 
-        self.id = Task.static_id
-        Task.static_id += 1
-        self.is_complete = False
         self.title = title
         self.details = details
         self.due_date = due_date
-        self.category = Category(category)
-        self.priority = Priority(priority)
-
-    def __str__(self):
-        return (
-            f"Task ID: {self.id}, "
-            f"Title: {self.title}, "
-            f"Details: {self.details}, "
-            f"Due Date: {self.due_date}, "
-            f"Category: {self.category.name}, "
-            f"Priority: {self.priority.name}"
-        )
+        self.category = Category(category).value
+        self.priority = Priority(priority).value
+        self.user_id = user_id
 
     def to_dict(self):
         return {
@@ -67,23 +58,7 @@ class Task:
             "details": self.details,
             "due_date": self.due_date,
             "is_complete": self.is_complete,
-            "category": self.category.value,
-            "priority": self.priority.value
+            "category": self.category,
+            "priority": self.priority,
+            "user_id": self.user_id
         }
-
-    def __lt__(self, other):
-        if not isinstance(other, Task):
-            return NotImplemented
-        return (datetime.strptime(self.due_date, Task.date_format) <
-                datetime.strptime(other.due_date, Task.date_format))
-
-    def __gt__(self, other):
-        if not isinstance(other, Task):
-            return NotImplemented
-        return (datetime.strptime(self.due_date, Task.date_format) >
-                datetime.strptime(other.due_date, Task.date_format))
-
-    def __eq__(self, other):
-        if not isinstance(other, Task):
-            return False
-        return self.id == other.id

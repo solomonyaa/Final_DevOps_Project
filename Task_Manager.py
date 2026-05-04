@@ -1,12 +1,36 @@
 from flask import Flask, request, jsonify
+from db import db, init_db
 from Task_Module import Task, Category, Priority
+from User_Module import User
 from datetime import datetime
-from typing import Dict
 from openai import OpenAI
+import functools
 
 
 app = Flask(__name__)
-tasks: Dict[int, Task] = {}
+init_db(app)
+
+_openai_client = None
+
+
+def get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI()
+    return _openai_client
+
+
+def require_auth(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        auth = request.authorization
+        if not auth:
+            return jsonify({"error": "Authentication required"}), 401
+        user = User.query.filter_by(username=auth.username).first()
+        if not user or not user.check_password(auth.password):
+            return jsonify({"error": "Invalid username or password"}), 401
+        return f(*args, **kwargs, current_user=user)
+    return wrapper
 
 
 def is_valid_date(date_str, fmt=Task.date_format):
@@ -22,156 +46,149 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
-@app.route('/tasks', methods=['POST'])
-def create_task():
+@app.route('/users/register', methods=['POST'])
+def register():
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid or missing JSON"}), 400
-
-    required = ['title', 'details', 'due_date', 'category', 'priority']
-    missing = []
-    for f in required:
-        if f not in data:
-            missing.append(f)
-    if missing:
-        return jsonify({"error": f"Missing required fields: {missing}"}), 400
-
+    if 'username' not in data or 'password' not in data:
+        return jsonify({"error": "Missing required fields: username, password"}), 400
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({"error": "Username already exists"}), 409
     try:
-        new_task = Task(
-            data['title'],
-            data['details'],
-            data['due_date'],
-            data['category'],
-            data['priority']
-        )
+        user = User(data['username'], data['password'])
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
+    db.session.add(user)
+    db.session.commit()
+    return jsonify(user.to_dict()), 201
 
-    tasks[new_task.id] = new_task
-    return jsonify(new_task.to_dict()), 201
+
+@app.route('/tasks', methods=['POST'])
+@require_auth
+def create_task(current_user):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid or missing JSON"}), 400
+    required = ['title', 'details', 'due_date', 'category', 'priority']
+    missing = [f for f in required if f not in data]
+    if missing:
+        return jsonify({"error": f"Missing required fields: {missing}"}), 400
+    try:
+        task = Task(data['title'], data['details'], data['due_date'],
+                    data['category'], data['priority'], current_user.id)
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    db.session.add(task)
+    db.session.commit()
+    return jsonify(task.to_dict()), 201
 
 
 @app.route('/tasks', methods=['GET'])
-def get_tasks():
-    filtered_tasks = list(tasks.values())
-
-    category = request.args.get('category')
-    priority = request.args.get('priority')
-    is_complete = request.args.get('is_complete')
-
-    if category:
-        filtered_tasks = [
-            t for t in filtered_tasks if t.category.value == category]
-    if priority:
-        filtered_tasks = [
-            t for t in filtered_tasks if t.priority.value == priority]
-    if is_complete is not None:
-        complete_bool = is_complete.lower() == 'true'
-        filtered_tasks = [
-            t for t in filtered_tasks if t.is_complete == complete_bool]
-
-    if not filtered_tasks:
+@require_auth
+def get_tasks(current_user):
+    query = Task.query.filter_by(user_id=current_user.id)
+    if request.args.get('category'):
+        query = query.filter_by(category=request.args.get('category'))
+    if request.args.get('priority'):
+        query = query.filter_by(priority=request.args.get('priority'))
+    if request.args.get('is_complete') is not None:
+        complete_bool = request.args.get('is_complete').lower() == 'true'
+        query = query.filter_by(is_complete=complete_bool)
+    tasks = query.all()
+    if not tasks:
         return jsonify({"error": "No tasks found"}), 404
-
-    return jsonify([t.to_dict() for t in sorted(filtered_tasks)]), 200
+    return jsonify([t.to_dict() for t in tasks]), 200
 
 
 @app.route('/task/<int:task_id>', methods=['GET'])
-def get_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def get_task(task_id, current_user):
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    if not task:
         return jsonify({"error": "Task not found"}), 404
-
-    return jsonify(tasks[task_id].to_dict()), 200
+    return jsonify(task.to_dict()), 200
 
 
 @app.route('/task/<int:task_id>', methods=['PATCH'])
-def edit_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def edit_task(task_id, current_user):
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    if not task:
         return jsonify({"error": "Task not found"}), 404
-
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid or missing JSON"}), 400
-
-    task = tasks[task_id]
-
-    editable_fields = ["title", "details", "due_date", "category", "priority"]
-    for field in editable_fields:
+    if 'due_date' in data and not is_valid_date(data['due_date']):
+        return jsonify({"error": "Invalid date format, expected DD/MM/YYYY"}), 400
+    for field in ['title', 'details', 'due_date']:
         if field in data:
-            if field == "due_date":
-                if not is_valid_date(data["due_date"]):
-                    return jsonify({"error": "Invalid date format, expected DD/MM/YYYY"}), 400
-                setattr(task, field, data[field])
-            elif field == "category":
-                try:
-                    setattr(task, field, Category(data[field]))
-                except ValueError:
-                    return jsonify({"error": f"Invalid category: {data[field]}"}), 400
-            elif field == "priority":
-                try:
-                    setattr(task, field, Priority(data[field]))
-                except ValueError:
-                    return jsonify({"error": f"Invalid priority: {data[field]}"}), 400
-            else:
-                setattr(task, field, data[field])
-
+            setattr(task, field, data[field])
+    if 'category' in data:
+        try:
+            task.category = Category(data['category']).value
+        except ValueError:
+            return jsonify({"error": f"Invalid category: {data['category']}"}), 400
+    if 'priority' in data:
+        try:
+            task.priority = Priority(data['priority']).value
+        except ValueError:
+            return jsonify({"error": f"Invalid priority: {data['priority']}"}), 400
+    db.session.commit()
     return jsonify({"success": True, "task": task.to_dict()}), 200
 
 
 @app.route('/task/<int:task_id>', methods=['DELETE'])
-def delete_task(task_id):
-    if task_id not in tasks:
-        return jsonify({"error": "Task not found"}), 404
+@require_auth
+def delete_task(task_id, current_user):
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()\
 
-    tasks.pop(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    db.session.delete(task)
+    db.session.commit()
     return jsonify({"success": True}), 200
 
 
 @app.route('/task/<int:task_id>/complete', methods=['PATCH'])
-def set_task_complete(task_id):
-    if task_id not in tasks:
+@require_auth
+def set_task_complete(task_id, current_user):
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    if not task:
         return jsonify({"error": "Task not found"}), 404
-
     data = request.get_json()
     if not data or 'is_complete' not in data:
         return jsonify({"error": "Missing required field: is_complete"}), 400
-
     if not isinstance(data['is_complete'], bool):
         return jsonify({"error": "is_complete must be a boolean"}), 400
-
-    tasks[task_id].is_complete = data['is_complete']
-    return jsonify({"success": True, "task": tasks[task_id].to_dict()}), 200
+    task.is_complete = data['is_complete']
+    db.session.commit()
+    return jsonify({"success": True, "task": task.to_dict()}), 200
 
 
 @app.route('/task/<int:task_id>/ask', methods=['POST'])
-def ask_about_task(task_id):
-    if task_id not in tasks:
+@require_auth
+def ask_about_task(task_id, current_user):
+    task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+    if not task:
         return jsonify({"error": "Task not found"}), 404
-
     data = request.get_json()
     if not data or 'question' not in data:
         return jsonify({"error": "Missing required field: question"}), 400
-
-    client = OpenAI()
-    task = tasks[task_id]
-
     system_prompt = (
         "You are a productivity assistant. "
         "The user will ask you about a task they need to complete. "
         "Give practical, concise advice on how to best do it."
     )
-
     user_prompt = (
         f"Task: {task.title}\n"
         f"Details: {task.details}\n"
         f"Due date: {task.due_date}\n"
-        f"Priority: {task.priority.value}\n"
-        f"Category: {task.category.value}\n\n"
+        f"Priority: {task.priority}\n"
+        f"Category: {task.category}\n\n"
         f"Question: {data['question']}"
     )
-
-    # noinspection PyTypeChecker
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -179,14 +196,9 @@ def ask_about_task(task_id):
         ],
         temperature=0.5
     )
-
-    # noinspection PyUnresolvedReferences
     answer = response.choices[0].message.content
     return jsonify({"task_id": task_id, "question": data['question'], "answer": answer}), 200
 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
-
-
-# TODO: add user authentication and task sharing
