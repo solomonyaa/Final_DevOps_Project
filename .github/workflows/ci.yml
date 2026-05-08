@@ -25,6 +25,8 @@ jobs:
         run: flake8 Task_Manager.py Task_Module.py db.py User_Module.py --max-line-length=120
 
       - name: Run pytest
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
         run: python -m pytest test_Task_Manager.py -v
 
       - name: Start PostgreSQL stack
