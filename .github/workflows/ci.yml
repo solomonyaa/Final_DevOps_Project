@@ -1,15 +1,9 @@
 name: CI Workflow - test, build and run container
 
 on:
-  push:
-    branches:
-      - Shayha-app
   pull_request:
     branches:
       - main
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   test-with-postgres:
@@ -19,8 +13,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest flake8
+
+      - name: Lint with flake8
+        run: flake8 Task_Manager.py Task_Module.py db.py User_Module.py --max-line-length=120
+
+      - name: Run pytest
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
+        run: python -m pytest test_Task_Manager.py -v
+
       - name: Start PostgreSQL stack
         run: docker compose -f docker-compose.yml up -d --build
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Wait for Flask app
         run: |
@@ -64,6 +76,15 @@ jobs:
       - name: "GET /tasks - get all tasks"
         run: curl -sS -f http://127.0.0.1:5000/tasks -u testuser:testpass123
 
+      - name: "GET /tasks - filter by category"
+        run: curl -sS -f "http://127.0.0.1:5000/tasks?category=work" -u testuser:testpass123
+
+      - name: "GET /tasks - filter by priority"
+        run: curl -sS -f "http://127.0.0.1:5000/tasks?priority=high" -u testuser:testpass123
+
+      - name: "GET /tasks - filter by is_complete"
+        run: curl -sS -f "http://127.0.0.1:5000/tasks?is_complete=false" -u testuser:testpass123
+
       # ─── GET /task/<id> ────────────────────────────────────────
       - name: "GET /task/1 - get single task"
         run: curl -sS -f http://127.0.0.1:5000/task/1 -u testuser:testpass123
@@ -84,6 +105,36 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"is_complete": true}'
 
+      - name: "PATCH /task/1/complete - mark incomplete"
+        run: |
+          curl -sS -f -X PATCH http://127.0.0.1:5000/task/1/complete \
+            -u testuser:testpass123 \
+            -H "Content-Type: application/json" \
+            -d '{"is_complete": false}'
+
+      # ─── POST /task/<id>/ask ───────────────────────────────────
+      - name: "POST /task/1/ask - ask AI about task"
+        run: |
+          curl -sS -f -X POST http://127.0.0.1:5000/task/1/ask \
+            -u testuser:testpass123 \
+            -H "Content-Type: application/json" \
+            -d '{"question": "How should I best approach this task?"}' | tee ask_response.json
+          echo ""
+          echo "### Ask response" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat ask_response.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # ─── DELETE /task/<id> ─────────────────────────────────────
+      - name: "DELETE /task/1 - delete task"
+        run: curl -sS -f -X DELETE http://127.0.0.1:5000/task/1 -u testuser:testpass123
+
+      - name: "GET /task/1 - verify task deleted"
+        run: |
+          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/task/1 -u testuser:testpass123)
+          if [ "$response" != "404" ]; then echo "Expected 404 but got $response"; exit 1; fi
+          echo "Task correctly deleted - got 404"
+
       # ─── Test unauthorized access ──────────────────────────────
       - name: "GET /tasks - no auth returns 401"
         run: |
@@ -91,10 +142,7 @@ jobs:
           if [ "$response" != "401" ]; then echo "Expected 401 but got $response"; exit 1; fi
           echo "Unauthorized access correctly rejected - got 401"
 
-      # ─── Show tasks from DB ────────────────────────────────────
-      - name: "Debug - list running containers"
-        run: docker ps --format '{{.Names}}'
-
+      # ─── Show DB contents ──────────────────────────────────────
       - name: "Show users and tasks from PostgreSQL"
         run: |
           docker exec cloudstasks-db-1 psql -U user -d taskdb -c "SELECT * FROM users;"
