@@ -9,8 +9,5 @@ venv/
 frontend/node_modules/
 frontend/dist/
 
-# Local dev
-start.sh
-
 # OS
 .DS_Store
