@@ -16,7 +16,7 @@ class User(db.Model):
         if not isinstance(password, str) or len(password) < 6:
             raise ValueError("Password must be at least 6 characters")
 
-        self.username = username
+        self.username = username.lower()
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
