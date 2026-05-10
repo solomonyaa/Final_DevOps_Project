@@ -54,6 +54,21 @@ jobs:
           docker compose -f docker-compose.yml logs
           exit 1
 
+      # ─── Check DB credentials ─────────────────────────────────────
+      - name: "Check DB - verify credentials and connection"
+        run: |
+          result=$(docker exec cloudstasks-db-1 psql \
+            -U ${{ secrets.POSTGRES_USER }} \
+            -d ${{ secrets.POSTGRES_DB }} \
+            -c "SELECT current_user, current_database();")
+          echo "$result"
+          if echo "$result" | grep -q "${{ secrets.POSTGRES_USER }}"; then
+            echo "✅ DB credentials verified - connected as ${{ secrets.POSTGRES_USER }}"
+          else
+            echo "❌ DB credentials failed"
+            exit 1
+          fi
+
       # ─── GET /api/health ───────────────────────────────────────────
       - name: "GET /api/health"
         run: |
