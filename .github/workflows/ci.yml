@@ -9,6 +9,13 @@ jobs:
   test-with-postgres:
     runs-on: ubuntu-latest
 
+    env:
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DATABASE_URL: postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@db:5432/${{ secrets.POSTGRES_DB }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,13 +38,11 @@ jobs:
 
       - name: Start PostgreSQL stack
         run: docker compose -f docker-compose.yml up -d --build
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Wait for Flask app
         run: |
           for i in {1..20}; do
-            if curl -sf http://127.0.0.1:5000/health; then
+            if curl -sf http://127.0.0.1:5000/api/health; then
               echo "App is ready"
               exit 0
             fi
@@ -48,74 +53,89 @@ jobs:
           docker compose -f docker-compose.yml logs
           exit 1
 
-      # ─── GET /health ───────────────────────────────────────────
-      - name: "GET /health"
+      # ─── Check DB credentials ─────────────────────────────────────
+      - name: "Check DB - verify credentials and connection"
         run: |
-          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/health)
+          result=$(docker exec cloudstasks-db-1 psql \
+            -U ${{ secrets.POSTGRES_USER }} \
+            -d ${{ secrets.POSTGRES_DB }} \
+            -c "SELECT current_user, current_database();")
+          echo "$result"
+          if echo "$result" | grep -q "${{ secrets.POSTGRES_USER }}"; then
+            echo "✅ DB credentials verified - connected as ${{ secrets.POSTGRES_USER }}"
+          else
+            echo "❌ DB credentials failed"
+            exit 1
+          fi
+
+      # ─── GET /api/health ───────────────────────────────────────────
+      - name: "GET /api/health"
+        run: |
+          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/api/health)
           if [ "$response" != "200" ]; then echo "Expected 200 but got $response"; exit 1; fi
           echo "Health check passed - got 200"
 
-      # ─── POST /users/register ──────────────────────────────────
-      - name: "POST /users/register - create test user"
+      # ─── POST /api/users/register ──────────────────────────────────
+      - name: "POST /api/users/register - create test user"
         run: |
-          response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:5000/users/register \
+          response=$(curl -sS -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:5000/api/users/register \
             -H "Content-Type: application/json" \
             -d '{"username": "testuser", "password": "testpass123"}')
           if [ "$response" != "201" ]; then echo "Expected 201 but got $response"; exit 1; fi
           echo "User registered - got 201"
 
-      # ─── POST /tasks ───────────────────────────────────────────
-      - name: "POST /tasks - create task"
+      # ─── POST /api/tasks ───────────────────────────────────────────
+      - name: "POST /api/tasks - create task"
         run: |
-          curl -sS -f -X POST http://127.0.0.1:5000/tasks \
+          curl -sS -f -X POST http://127.0.0.1:5000/api/tasks \
             -u testuser:testpass123 \
             -H "Content-Type: application/json" \
             -d '{"title":"DB task","details":"PostgreSQL test","due_date":"30/04/2126","category":"work","priority":"high"}'
 
-      # ─── GET /tasks ────────────────────────────────────────────
-      - name: "GET /tasks - get all tasks"
-        run: curl -sS -f http://127.0.0.1:5000/tasks -u testuser:testpass123
+      # ─── GET /api/tasks ────────────────────────────────────────────
+      - name: "GET /api/tasks - get all tasks"
+        run: curl -sS -f http://127.0.0.1:5000/api/tasks -u testuser:testpass123
 
-      - name: "GET /tasks - filter by category"
-        run: curl -sS -f "http://127.0.0.1:5000/tasks?category=work" -u testuser:testpass123
+      - name: "GET /api/tasks - filter by category"
+        run: curl -sS -f "http://127.0.0.1:5000/api/tasks?category=work" -u testuser:testpass123
 
-      - name: "GET /tasks - filter by priority"
-        run: curl -sS -f "http://127.0.0.1:5000/tasks?priority=high" -u testuser:testpass123
+      - name: "GET /api/tasks - filter by priority"
+        run: curl -sS -f "http://127.0.0.1:5000/api/tasks?priority=high" -u testuser:testpass123
 
-      - name: "GET /tasks - filter by is_complete"
-        run: curl -sS -f "http://127.0.0.1:5000/tasks?is_complete=false" -u testuser:testpass123
+      - name: "GET /api/tasks - filter by is_complete"
+        run: curl -sS -f "http://127.0.0.1:5000/api/tasks?is_complete=false" -u testuser:testpass123
 
-      # ─── GET /task/<id> ────────────────────────────────────────
-      - name: "GET /task/1 - get single task"
-        run: curl -sS -f http://127.0.0.1:5000/task/1 -u testuser:testpass123
+      # ─── GET /api/task/<id> ────────────────────────────────────────
+      - name: "GET /api/task/1 - get single task"
+        run: curl -sS -f http://127.0.0.1:5000/api/task/1 -u testuser:testpass123
 
-      # ─── PATCH /task/<id> ──────────────────────────────────────
-      - name: "PATCH /task/1 - edit task"
+      # ─── PATCH /api/task/<id> ──────────────────────────────────────
+      - name: "PATCH /api/task/1 - edit task"
         run: |
-          curl -sS -f -X PATCH http://127.0.0.1:5000/task/1 \
+          curl -sS -f -X PATCH http://127.0.0.1:5000/api/task/1 \
             -u testuser:testpass123 \
             -H "Content-Type: application/json" \
             -d '{"title": "Updated DB task", "priority": "low"}'
 
-      # ─── PATCH /task/<id>/complete ─────────────────────────────
-      - name: "PATCH /task/1/complete - mark complete"
+      # ─── PATCH /api/task/<id>/complete ─────────────────────────────
+      - name: "PATCH /api/task/1/complete - mark complete"
         run: |
-          curl -sS -f -X PATCH http://127.0.0.1:5000/task/1/complete \
+          curl -sS -f -X PATCH http://127.0.0.1:5000/api/task/1/complete \
             -u testuser:testpass123 \
             -H "Content-Type: application/json" \
             -d '{"is_complete": true}'
 
-      - name: "PATCH /task/1/complete - mark incomplete"
+      - name: "PATCH /api/task/1/complete - mark incomplete"
         run: |
-          curl -sS -f -X PATCH http://127.0.0.1:5000/task/1/complete \
+          curl -sS -f -X PATCH http://127.0.0.1:5000/api/task/1/complete \
             -u testuser:testpass123 \
             -H "Content-Type: application/json" \
             -d '{"is_complete": false}'
 
-      # ─── POST /task/<id>/ask ───────────────────────────────────
-      - name: "POST /task/1/ask - ask AI about task"
+      # ─── POST /api/task/<id>/ask ───────────────────────────────────
+      - name: "POST /api/task/1/ask - ask AI about task"
         run: |
-          curl -sS -f -X POST http://127.0.0.1:5000/task/1/ask \
+          curl -sS -f -X POST http://127.0.0.1:5000/api/task/1/ask \
             -u testuser:testpass123 \
             -H "Content-Type: application/json" \
             -d '{"question": "How should I best approach this task?"}' | tee ask_response.json
@@ -125,30 +145,43 @@ jobs:
           cat ask_response.json >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # ─── DELETE /task/<id> ─────────────────────────────────────
-      - name: "DELETE /task/1 - delete task"
-        run: curl -sS -f -X DELETE http://127.0.0.1:5000/task/1 -u testuser:testpass123
+      # ─── DELETE /api/task/<id> ─────────────────────────────────────
+      - name: "DELETE /api/task/1 - delete task"
+        run: curl -sS -f -X DELETE http://127.0.0.1:5000/api/task/1 -u testuser:testpass123
 
-      - name: "GET /task/1 - verify task deleted"
+      - name: "GET /api/task/1 - verify task deleted"
         run: |
-          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/task/1 -u testuser:testpass123)
+          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/api/task/1 -u testuser:testpass123)
           if [ "$response" != "404" ]; then echo "Expected 404 but got $response"; exit 1; fi
           echo "Task correctly deleted - got 404"
 
-      # ─── Test unauthorized access ──────────────────────────────
-      - name: "GET /tasks - no auth returns 401"
+      # ─── Test unauthorized access ──────────────────────────────────
+      - name: "GET /api/tasks - no auth returns 401"
         run: |
-          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/tasks)
+          response=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/api/tasks)
           if [ "$response" != "401" ]; then echo "Expected 401 but got $response"; exit 1; fi
           echo "Unauthorized access correctly rejected - got 401"
 
-      # ─── Show DB contents ──────────────────────────────────────
-      - name: "Show users and tasks from PostgreSQL"
+      # ─── Check DB access ───────────────────────────────────────────
+      - name: "Check DB - verify users table"
         run: |
-          docker exec cloudstasks-db-1 psql -U user -d taskdb -c "SELECT * FROM users;"
-          docker exec cloudstasks-db-1 psql -U user -d taskdb -c "SELECT * FROM tasks;"
+          docker exec cloudstasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
+            -c "SELECT id, username FROM users;"
 
-      # ─── Cleanup ───────────────────────────────────────────────
+      - name: "Check DB - verify tasks table"
+        run: |
+          docker exec cloudstasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
+            -c "SELECT id, title, category, priority, is_complete FROM tasks;"
+
+      - name: "Check DB - verify task was deleted"
+        run: |
+          count=$(docker exec cloudstasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
+            -t -c "SELECT COUNT(*) FROM tasks;")
+          echo "Tasks remaining in DB: $count"
+          if [ "$count" -ne 0 ]; then echo "Expected 0 tasks but got $count"; exit 1; fi
+          echo "DB verified - 0 tasks remaining"
+
+      # ─── Cleanup ───────────────────────────────────────────────────
       - name: Show logs
         if: always()
         run: docker compose -f docker-compose.yml logs

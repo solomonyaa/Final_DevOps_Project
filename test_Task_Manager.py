@@ -27,7 +27,7 @@ def client(app):
 @pytest.fixture
 def auth_client(client):
     """Register a test user and return client with auth credentials."""
-    client.post('/users/register', json={
+    client.post('/api/users/register', json={
         "username": "testuser",
         "password": "testpass123"
     })
@@ -40,7 +40,7 @@ AUTH_HEADER = {"Authorization": "Basic dGVzdHVzZXI6dGVzdHBhc3MxMjM="}
 
 def create_sample_task(client, title="Buy groceries", details="Milk and eggs",
                        due_date="01/06/2026", category="personal", priority="medium"):
-    return client.post('/tasks',
+    return client.post('/api/tasks',
                        json={
                            "title": title,
                            "details": details,
@@ -57,18 +57,18 @@ def create_sample_task(client, title="Buy groceries", details="Milk and eggs",
 
 class TestHealth:
     def test_health_returns_ok(self, client):
-        response = client.get('/health')
+        response = client.get('/api/health')
         assert response.status_code == 200
         assert response.get_json() == {"status": "ok"}
 
 
 # ───────────────────────────────────────────
-# POST /users/register
+# POST /api/users/register
 # ───────────────────────────────────────────
 
 class TestRegister:
     def test_register_success(self, client):
-        response = client.post('/users/register', json={
+        response = client.post('/api/users/register', json={
             "username": "newuser",
             "password": "password123"
         })
@@ -78,20 +78,20 @@ class TestRegister:
         assert 'password_hash' not in data
 
     def test_register_missing_fields(self, client):
-        response = client.post('/users/register', json={"username": "onlyuser"})
+        response = client.post('/api/users/register', json={"username": "onlyuser"})
         assert response.status_code == 400
 
     def test_register_duplicate_username(self, client):
-        client.post('/users/register', json={"username": "user1", "password": "pass123"})
-        response = client.post('/users/register', json={"username": "user1", "password": "pass123"})
+        client.post('/api/users/register', json={"username": "user1", "password": "pass123"})
+        response = client.post('/api/users/register', json={"username": "user1", "password": "pass123"})
         assert response.status_code == 409
 
     def test_register_short_password(self, client):
-        response = client.post('/users/register', json={"username": "user1", "password": "abc"})
+        response = client.post('/api/users/register', json={"username": "user1", "password": "abc"})
         assert response.status_code == 400
 
     def test_register_missing_json(self, client):
-        response = client.post('/users/register')
+        response = client.post('/api/users/register')
         assert response.status_code == 415
 
 
@@ -101,21 +101,21 @@ class TestRegister:
 
 class TestAuth:
     def test_no_auth_returns_401(self, auth_client):
-        response = auth_client.get('/tasks')
+        response = auth_client.get('/api/tasks')
         assert response.status_code == 401
 
     def test_wrong_password_returns_401(self, auth_client):
-        response = auth_client.get('/tasks',
+        response = auth_client.get('/api/tasks',
                                    headers={"Authorization": "Basic dGVzdHVzZXI6d3JvbmdwYXNz"})
         assert response.status_code == 401
 
     def test_valid_auth_accepted(self, auth_client):
-        response = auth_client.get('/tasks', headers=AUTH_HEADER)
+        response = auth_client.get('/api/tasks', headers=AUTH_HEADER)
         assert response.status_code in [200, 404]
 
 
 # ───────────────────────────────────────────
-# POST /tasks
+# POST /api/tasks
 # ───────────────────────────────────────────
 
 class TestCreateTask:
@@ -129,7 +129,7 @@ class TestCreateTask:
         assert data['is_complete'] is False
 
     def test_create_task_missing_fields(self, auth_client):
-        response = auth_client.post('/tasks',
+        response = auth_client.post('/api/tasks',
                                     json={"title": "Only title"},
                                     headers=AUTH_HEADER)
         assert response.status_code == 400
@@ -147,7 +147,7 @@ class TestCreateTask:
         assert response.status_code == 400
 
     def test_create_task_requires_auth(self, auth_client):
-        response = auth_client.post('/tasks', json={
+        response = auth_client.post('/api/tasks', json={
             "title": "Task", "details": "Details",
             "due_date": "01/06/2026", "category": "work", "priority": "high"
         })
@@ -155,25 +155,25 @@ class TestCreateTask:
 
 
 # ───────────────────────────────────────────
-# GET /tasks
+# GET /api/tasks
 # ───────────────────────────────────────────
 
 class TestGetTasks:
     def test_get_all_tasks(self, auth_client):
         create_sample_task(auth_client, title="Task 1")
         create_sample_task(auth_client, title="Task 2")
-        response = auth_client.get('/tasks', headers=AUTH_HEADER)
+        response = auth_client.get('/api/tasks', headers=AUTH_HEADER)
         assert response.status_code == 200
         assert len(response.get_json()) == 2
 
     def test_get_tasks_empty(self, auth_client):
-        response = auth_client.get('/tasks', headers=AUTH_HEADER)
+        response = auth_client.get('/api/tasks', headers=AUTH_HEADER)
         assert response.status_code == 404
 
     def test_get_tasks_filter_by_category(self, auth_client):
         create_sample_task(auth_client, title="Personal task", category="personal")
         create_sample_task(auth_client, title="Work task", category="work")
-        response = auth_client.get('/tasks?category=work', headers=AUTH_HEADER)
+        response = auth_client.get('/api/tasks?category=work', headers=AUTH_HEADER)
         assert response.status_code == 200
         data = response.get_json()
         assert len(data) == 1
@@ -182,44 +182,44 @@ class TestGetTasks:
     def test_get_tasks_filter_by_priority(self, auth_client):
         create_sample_task(auth_client, title="High task", priority="high")
         create_sample_task(auth_client, title="Low task", priority="low")
-        response = auth_client.get('/tasks?priority=high', headers=AUTH_HEADER)
+        response = auth_client.get('/api/tasks?priority=high', headers=AUTH_HEADER)
         assert response.status_code == 200
         assert len(response.get_json()) == 1
 
     def test_get_tasks_requires_auth(self, auth_client):
-        response = auth_client.get('/tasks')
+        response = auth_client.get('/api/tasks')
         assert response.status_code == 401
 
 
 # ───────────────────────────────────────────
-# GET /task/<id>
+# GET /api/task/<id>
 # ───────────────────────────────────────────
 
 class TestGetTask:
     def test_get_task_success(self, auth_client):
         create_sample_task(auth_client, title="My task")
-        response = auth_client.get('/task/1', headers=AUTH_HEADER)
+        response = auth_client.get('/api/task/1', headers=AUTH_HEADER)
         assert response.status_code == 200
         assert response.get_json()['title'] == "My task"
 
     def test_get_task_not_found(self, auth_client):
-        response = auth_client.get('/task/999', headers=AUTH_HEADER)
+        response = auth_client.get('/api/task/999', headers=AUTH_HEADER)
         assert response.status_code == 404
 
     def test_get_task_requires_auth(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.get('/task/1')
+        response = auth_client.get('/api/task/1')
         assert response.status_code == 401
 
 
 # ───────────────────────────────────────────
-# PATCH /task/<id>
+# PATCH /api/task/<id>
 # ───────────────────────────────────────────
 
 class TestEditTask:
     def test_edit_title(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1',
+        response = auth_client.patch('/api/task/1',
                                      json={"title": "Updated title"},
                                      headers=AUTH_HEADER)
         assert response.status_code == 200
@@ -227,64 +227,64 @@ class TestEditTask:
 
     def test_edit_invalid_date(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1',
+        response = auth_client.patch('/api/task/1',
                                      json={"due_date": "99/99/9999"},
                                      headers=AUTH_HEADER)
         assert response.status_code == 400
 
     def test_edit_invalid_category(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1',
+        response = auth_client.patch('/api/task/1',
                                      json={"category": "invalid"},
                                      headers=AUTH_HEADER)
         assert response.status_code == 400
 
     def test_edit_task_not_found(self, auth_client):
-        response = auth_client.patch('/task/999',
+        response = auth_client.patch('/api/task/999',
                                      json={"title": "Ghost"},
                                      headers=AUTH_HEADER)
         assert response.status_code == 404
 
     def test_edit_task_requires_auth(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1', json={"title": "New"})
+        response = auth_client.patch('/api/task/1', json={"title": "New"})
         assert response.status_code == 401
 
 
 # ───────────────────────────────────────────
-# DELETE /task/<id>
+# DELETE /api/task/<id>
 # ───────────────────────────────────────────
 
 class TestDeleteTask:
     def test_delete_task_success(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.delete('/task/1', headers=AUTH_HEADER)
+        response = auth_client.delete('/api/task/1', headers=AUTH_HEADER)
         assert response.status_code == 200
 
     def test_delete_task_no_longer_exists(self, auth_client):
         create_sample_task(auth_client)
-        auth_client.delete('/task/1', headers=AUTH_HEADER)
-        response = auth_client.get('/task/1', headers=AUTH_HEADER)
+        auth_client.delete('/api/task/1', headers=AUTH_HEADER)
+        response = auth_client.get('/api/task/1', headers=AUTH_HEADER)
         assert response.status_code == 404
 
     def test_delete_task_not_found(self, auth_client):
-        response = auth_client.delete('/task/999', headers=AUTH_HEADER)
+        response = auth_client.delete('/api/task/999', headers=AUTH_HEADER)
         assert response.status_code == 404
 
     def test_delete_task_requires_auth(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.delete('/task/1')
+        response = auth_client.delete('/api/task/1')
         assert response.status_code == 401
 
 
 # ───────────────────────────────────────────
-# PATCH /task/<id>/complete
+# PATCH /api/task/<id>/complete
 # ───────────────────────────────────────────
 
 class TestSetTaskComplete:
     def test_complete_task(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1/complete',
+        response = auth_client.patch('/api/task/1/complete',
                                      json={"is_complete": True},
                                      headers=AUTH_HEADER)
         assert response.status_code == 200
@@ -292,29 +292,29 @@ class TestSetTaskComplete:
 
     def test_uncomplete_task(self, auth_client):
         create_sample_task(auth_client)
-        auth_client.patch('/task/1/complete',
+        auth_client.patch('/api/task/1/complete',
                           json={"is_complete": True},
                           headers=AUTH_HEADER)
-        response = auth_client.patch('/task/1/complete',
+        response = auth_client.patch('/api/task/1/complete',
                                      json={"is_complete": False},
                                      headers=AUTH_HEADER)
         assert response.status_code == 200
         assert response.get_json()['task']['is_complete'] is False
 
     def test_complete_task_not_found(self, auth_client):
-        response = auth_client.patch('/task/999/complete',
+        response = auth_client.patch('/api/task/999/complete',
                                      json={"is_complete": True},
                                      headers=AUTH_HEADER)
         assert response.status_code == 404
 
     def test_complete_task_invalid_type(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1/complete',
+        response = auth_client.patch('/api/task/1/complete',
                                      json={"is_complete": "true"},
                                      headers=AUTH_HEADER)
         assert response.status_code == 400
 
     def test_complete_task_requires_auth(self, auth_client):
         create_sample_task(auth_client)
-        response = auth_client.patch('/task/1/complete', json={"is_complete": True})
+        response = auth_client.patch('/api/task/1/complete', json={"is_complete": True})
         assert response.status_code == 401
