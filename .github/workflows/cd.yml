@@ -1,4 +1,4 @@
-name: CD Workflow - Login to Dockerhub, Build, Push
+name: CD Workflow - Build, Push, Deploy
 
 on:
   push:
@@ -8,14 +8,6 @@ on:
 jobs:
   on-merge:
     runs-on: ubuntu-latest
-
-    env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DATABASE_URL: postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@db:5432/${{ secrets.POSTGRES_DB }}
 
     steps:
       - name: Checkout code
@@ -37,3 +29,36 @@ jobs:
 
       - name: Push SHA tag
         run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:${{ github.sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PROJECT_AWS_ADMIN_ACCESSKEY }}
+          aws-secret-access-key: ${{ secrets.PROJECT_AWS_ADMIN_SECRET }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
+
+      - name: Create Kubernetes secret
+        run: |
+          kubectl create secret generic cloudtasks-secret \
+            --from-literal=DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.RDS_ENDPOINT }}/taskdb \
+            --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            --namespace=cloudtasks \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Deploy new image to EKS
+        run: |
+          kubectl set image deployment/cloudtasks-deployment \
+            cloudtasks=${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:${{ github.sha }} \
+            --namespace=cloudtasks
+          kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks
