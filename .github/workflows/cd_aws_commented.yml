@@ -1,0 +1,103 @@
+name: CD Workflow - Login to Dockerhub, Build, Push, Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  on-merge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:latest \
+                       -t ${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:${{ github.sha }} .
+
+      - name: Push latest tag
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:latest
+
+      - name: Push SHA tag
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:${{ github.sha }}
+
+      # ─────────────────────────────────────────────────────────────
+      # AWS STEPS - Uncomment before demo, comment out after
+      # These steps cost money - only run when cluster is active
+      # ─────────────────────────────────────────────────────────────
+
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: us-east-1
+
+      # ─── Terraform ────────────────────────────────────────────────
+      # - name: Terraform Init
+      #   run: |
+      #     cd terraform
+      #     terraform init
+
+      # - name: Terraform Apply
+      #   env:
+      #     TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
+      #     TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
+      #   run: |
+      #     cd terraform
+      #     terraform apply -auto-approve
+
+      # - name: Get RDS endpoint
+      #   run: |
+      #     cd terraform
+      #     echo "RDS_ENDPOINT=$(terraform output -raw rds_endpoint)" >> $GITHUB_ENV
+
+      # ─── Kubernetes ───────────────────────────────────────────────
+      # - name: Update kubeconfig
+      #   run: |
+      #     aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
+
+      # - name: Install NGINX Ingress Controller (first deploy only)
+      #   run: |
+      #     helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+      #     helm repo update
+      #     helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+      #       --namespace ingress-nginx \
+      #       --create-namespace
+
+      # - name: Install Prometheus + Grafana (first deploy only)
+      #   run: |
+      #     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      #     helm repo update
+      #     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      #       --namespace monitoring \
+      #       --create-namespace
+
+      # - name: Create Kubernetes secret
+      #   run: |
+      #     kubectl create secret generic cloudtasks-secret \
+      #       --from-literal=DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@$RDS_ENDPOINT/taskdb \
+      #       --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+      #       --namespace=cloudtasks \
+      #       --dry-run=client -o yaml | kubectl apply -f -
+
+      # - name: Apply Kubernetes manifests
+      #   run: |
+      #     kubectl apply -f k8s/namespace.yaml
+      #     kubectl apply -f k8s/deployment.yaml
+      #     kubectl apply -f k8s/service.yaml
+      #     kubectl apply -f k8s/ingress.yaml
+
+      # - name: Deploy new image to EKS
+      #   run: |
+      #     kubectl set image deployment/cloudtasks-deployment \
+      #       cloudtasks=${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:${{ github.sha }} \
+      #       --namespace=cloudtasks
+      #     kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks
