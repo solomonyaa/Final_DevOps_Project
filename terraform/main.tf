@@ -61,6 +61,20 @@ module "eks" {
     }
   }
 
+  access_entries = {
+    solomon = {
+      principal_arn = "arn:aws:iam::272495906861:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_601b9dcf2f404545"
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
+
   tags = {
     Project = var.project_name
   }
