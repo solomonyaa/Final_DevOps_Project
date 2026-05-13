@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 *.pyo
-.env
 venv/
+.venv/
+
+.env
 
 # Frontend
 frontend/node_modules/
@@ -11,3 +13,10 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+terraform/*.tfstate
+terraform/*.tfstate.backup
