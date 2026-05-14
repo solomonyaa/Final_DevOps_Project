@@ -17,14 +17,15 @@ A cloud-native Task Manager application built with Python Flask and React, conta
 |-------|-----------|
 | Backend | Python, Flask |
 | Frontend | React, Vite |
-| Database | PostgreSQL |
-| Containerization | Docker |
+| Database | PostgreSQL (local: Docker, production: AWS RDS) |
+| Containerization | Docker, Docker Compose |
 | Container Orchestration | Kubernetes (AWS EKS) |
 | Infrastructure as Code | Terraform |
 | Cloud | AWS (EKS, RDS, VPC, IAM) |
 | CI/CD | GitHub Actions |
 | Version Control | Git, GitHub |
 | AI | OpenAI GPT-4o |
+| Monitoring | Prometheus, Grafana |
 
 ---
 
@@ -35,7 +36,8 @@ Final_DevOps_Project/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # CI - runs on every PR to main
-│       └── cd.yml              # CD - runs on merge to main
+│       ├── cd.yml              # CD - builds and pushes to Docker Hub on merge
+│       └── deploy.yml          # Deploy - manual trigger for demo day
 ├── frontend/                   # React UI (Vite)
 │   ├── src/
 │   │   ├── pages/              # AuthPage, Dashboard
@@ -44,6 +46,16 @@ Final_DevOps_Project/
 │   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
+├── k8s/                        # Kubernetes manifests
+│   ├── namespace.yaml          # cloudtasks namespace
+│   ├── deployment.yaml         # Flask app deployment (2 replicas)
+│   ├── service.yaml            # ClusterIP service
+│   └── ingress.yaml            # NGINX ingress
+├── terraform/                  # AWS infrastructure
+│   ├── main.tf                 # VPC, EKS, RDS resources
+│   ├── variables.tf            # Input variables
+│   ├── outputs.tf              # Output values
+│   └── terraform.tfvars        # Variable values (not committed)
 ├── Task_Manager.py             # Flask REST API
 ├── Task_Module.py              # Task, Category, Priority classes
 ├── User_Module.py              # User model
@@ -57,7 +69,7 @@ Final_DevOps_Project/
 
 ---
 
-## 🚀 Running the App
+## 🚀 Running Locally
 
 The only requirement is **Docker**.
 
@@ -124,7 +136,7 @@ All endpoints are prefixed with `/api`.
 ### CI (`ci.yml`) — triggers on every Pull Request to `main`
 1. Lint with flake8
 2. Run pytest unit tests (SQLite in memory)
-3. Build and start full Docker stack
+3. Build and start full Docker stack with PostgreSQL
 4. Integration tests for all API endpoints
 5. Verify DB state after each operation
 6. Cleanup
@@ -135,6 +147,72 @@ All endpoints are prefixed with `/api`.
 3. Push to Docker Hub with two tags:
    - `latest` — always the newest version
    - `<commit-sha>` — unique tag per commit for rollback
+
+### Deploy (`deploy.yml`) — manual trigger on demo day
+1. Configure AWS credentials
+2. Update kubeconfig for EKS
+3. Create/update Kubernetes secret with DB and API credentials
+4. Apply Kubernetes manifests
+5. Roll out new image to EKS deployment
+
+---
+
+## ☁️ AWS Infrastructure (Terraform)
+
+All infrastructure is provisioned with Terraform and destroyed after the demo to avoid costs.
+
+**Resources created:**
+- VPC with public and private subnets across 3 availability zones
+- NAT Gateway for private subnet internet access
+- EKS cluster (Kubernetes 1.32) with 2 worker nodes (`t3.medium`)
+- RDS PostgreSQL 15 instance (`db.t3.micro`) in private subnets
+- Security groups restricting RDS access to EKS nodes only
+
+**To provision:**
+```bash
+cd terraform
+terraform apply
+```
+
+**To destroy:**
+```bash
+terraform destroy
+```
+
+---
+
+## ☸️ Kubernetes
+
+The app runs on AWS EKS with the following resources:
+
+| Resource | Description |
+|----------|-------------|
+| Namespace | `cloudtasks` — isolated environment |
+| Deployment | 2 Flask replicas with resource limits |
+| Service | ClusterIP — internal load balancing |
+| Ingress | NGINX — routes external traffic |
+
+**Additional components installed via Helm:**
+- NGINX Ingress Controller — external load balancer
+- Prometheus + Grafana (`kube-prometheus-stack`) — monitoring
+
+---
+
+## 📊 Monitoring
+
+Prometheus and Grafana are installed via the `kube-prometheus-stack` Helm chart in the `monitoring` namespace.
+
+**Access Grafana:**
+```bash
+# Get external URL
+kubectl get svc kube-prometheus-stack-grafana -n monitoring
+
+# Get password
+kubectl get secret -n monitoring kube-prometheus-stack-grafana \
+  -o jsonpath="{.data.admin-password}" | base64 --decode
+```
+
+Default username: `admin`
 
 ---
 
@@ -148,6 +226,9 @@ All endpoints are prefixed with `/api`.
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `POSTGRES_DB` | PostgreSQL database name |
 | `OPENAI_API_KEY` | OpenAI API key |
+| `PROJECT_AWS_ADMIN_ACCESSKEY` | AWS access key ID |
+| `PROJECT_AWS_ADMIN_SECRET` | AWS secret access key |
+| `RDS_ENDPOINT` | RDS endpoint (updated after terraform apply) |
 
 ---
 
@@ -160,6 +241,8 @@ All endpoints are prefixed with `/api`.
 - React escapes all output preventing XSS
 - Prompt injection hardened with XML delimiters and system prompt instructions
 - Docker container runs as non-root user
+- RDS is in a private subnet — not accessible from the internet
+- RDS security group only allows connections from EKS nodes
 
 ---
 
