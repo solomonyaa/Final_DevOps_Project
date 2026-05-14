@@ -1,0 +1,45 @@
+name: Deploy to EKS - Demo Day
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PROJECT_AWS_ADMIN_ACCESSKEY }}
+          aws-secret-access-key: ${{ secrets.PROJECT_AWS_ADMIN_SECRET }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
+
+      - name: Create Kubernetes secret
+        run: |
+          kubectl create secret generic cloudtasks-secret \
+            --from-literal=DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.RDS_ENDPOINT }}/taskdb \
+            --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            --namespace=cloudtasks \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Deploy latest image to EKS
+        run: |
+          kubectl set image deployment/cloudtasks-deployment \
+            cloudtasks=${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:latest \
+            --namespace=cloudtasks
+          kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks
