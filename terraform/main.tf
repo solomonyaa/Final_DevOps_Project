@@ -158,12 +158,12 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
 
-  publicly_accessible    = false
-  skip_final_snapshot    = true
-  storage_encrypted      = true
-  kms_key_id             = aws_kms_key.rds_key.arn
-  monitoring_role_arn    = aws_iam_role.rds_monitoring_role.arn
-  monitoring_interval    = 60
+  publicly_accessible = false
+  skip_final_snapshot = true
+  storage_encrypted   = true
+  kms_key_id          = aws_kms_key.rds_key.arn
+  monitoring_role_arn = aws_iam_role.rds_monitoring_role.arn
+  monitoring_interval = 60
 
   tags = {
     Project = var.project_name
