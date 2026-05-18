@@ -1,0 +1,88 @@
+name: Terraform Apply
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PROJECT_AWS_ADMIN_ACCESSKEY }}
+          aws-secret-access-key: ${{ secrets.PROJECT_AWS_ADMIN_SECRET }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # ── Init ──────────────────────────────────────────────────────────────
+      - name: Terraform Init
+        run: terraform init
+
+      # ── Format check ─────────────────────────────────────────────────────
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: false
+
+      # ── Validate ─────────────────────────────────────────────────────────
+      - name: Terraform Validate
+        run: terraform validate
+
+      # ── Plan ─────────────────────────────────────────────────────────────
+      - name: Terraform Plan
+        id: plan
+        env:
+          TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
+          TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          terraform plan -out=tfplan 2>&1 | tee plan_output.txt
+          echo "### Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat plan_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # ── Apply ─────────────────────────────────────────────────────────────
+      - name: Terraform Apply
+        env:
+          TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
+          TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
+        run: terraform apply -auto-approve tfplan
+
+      # ── Capture outputs ───────────────────────────────────────────────────
+      - name: Show Terraform Outputs
+        run: |
+          echo "### Terraform Outputs" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          terraform output >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # ── Save RDS endpoint as GitHub secret ───────────────────────────────
+      - name: Save RDS endpoint to GitHub secrets
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
+          gh secret set RDS_ENDPOINT --body "$RDS_ENDPOINT" --repo ${{ github.repository }}
+
+      # ── Update kubeconfig ─────────────────────────────────────────────────
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name $(terraform output -raw eks_cluster_name) \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Verify EKS connection
+        run: kubectl get nodes
