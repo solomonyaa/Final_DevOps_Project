@@ -45,7 +45,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = var.eks_cluster_name
-  cluster_version = "1.32"
+  cluster_version = "1.35"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -58,6 +58,20 @@ module "eks" {
       desired_size   = var.eks_desired_nodes
       min_size       = 1
       max_size       = 5
+    }
+  }
+
+  access_entries = {
+    solomon = {
+      principal_arn = "arn:aws:iam::272495906861:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_601b9dcf2f404545"
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
     }
   }
 
