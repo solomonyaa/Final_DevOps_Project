@@ -19,15 +19,7 @@ export default function AuthPage() {
       if (mode === 'register') {
         await api.post('/users/register', { username, password })
       } else {
-        await api.get('/tasks', {
-          auth: { username, password },
-          validateStatus: s => s !== 401
-        })
-        const test = await api.get('/health')
-        if (test.status !== 200) throw new Error('Server error')
-        // verify credentials
-        const res = await api.get('/tasks', { auth: { username, password } })
-        if (res.status === 401) throw new Error('Invalid credentials')
+        await api.get('/tasks', { auth: { username, password } })
       }
       localStorage.setItem('username', username)
       localStorage.setItem('password', password)

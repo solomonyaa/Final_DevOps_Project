@@ -98,8 +98,6 @@ def get_tasks(current_user):
         complete_bool = request.args.get('is_complete').lower() == 'true'
         query = query.filter_by(is_complete=complete_bool)
     tasks = query.all()
-    if not tasks:
-        return jsonify({"error": "No tasks found"}), 404
     return jsonify([t.to_dict() for t in tasks]), 200
 
 

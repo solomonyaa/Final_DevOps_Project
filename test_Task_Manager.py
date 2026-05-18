@@ -111,7 +111,7 @@ class TestAuth:
 
     def test_valid_auth_accepted(self, auth_client):
         response = auth_client.get('/api/tasks', headers=AUTH_HEADER)
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
 
 
 # ───────────────────────────────────────────
@@ -168,7 +168,8 @@ class TestGetTasks:
 
     def test_get_tasks_empty(self, auth_client):
         response = auth_client.get('/api/tasks', headers=AUTH_HEADER)
-        assert response.status_code == 404
+        assert response.status_code == 200
+        assert response.get_json() == []
 
     def test_get_tasks_filter_by_category(self, auth_client):
         create_sample_task(auth_client, title="Personal task", category="personal")
