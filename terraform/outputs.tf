@@ -49,3 +49,37 @@ output "rds_db_name" {
   description = "Name of the PostgreSQL database"
   value       = aws_db_instance.postgres.db_name
 }
+
+# ───────────────────────────────────────────
+# Security Hardening Outputs
+# ───────────────────────────────────────────
+
+output "rds_kms_key_arn" {
+  description = "ARN of the KMS key used for RDS encryption"
+  value       = aws_kms_key.rds_key.arn
+}
+
+output "rds_monitoring_role_arn" {
+  description = "ARN of the IAM role used for RDS enhanced monitoring"
+  value       = aws_iam_role.rds_monitoring_role.arn
+}
+
+output "vpc_endpoint_s3_id" {
+  description = "ID of the S3 VPC endpoint"
+  value       = aws_vpc_endpoint.s3.id
+}
+
+output "vpc_endpoint_cloudwatch_id" {
+  description = "ID of the CloudWatch Logs VPC endpoint"
+  value       = aws_vpc_endpoint.cloudwatch_logs.id
+}
+
+output "vpc_endpoint_kms_id" {
+  description = "ID of the KMS VPC endpoint"
+  value       = aws_vpc_endpoint.kms.id
+}
+
+output "bastion_public_ip" {
+  description = "Public IP of the bastion host"
+  value       = aws_instance.bastion.public_ip
+}

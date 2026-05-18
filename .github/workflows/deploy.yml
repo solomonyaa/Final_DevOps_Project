@@ -22,6 +22,13 @@ jobs:
         run: |
           aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
 
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
       - name: Create Kubernetes secret
         run: |
           kubectl create secret generic cloudtasks-secret \
@@ -29,13 +36,6 @@ jobs:
             --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
             --namespace=cloudtasks \
             --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply Kubernetes manifests
-        run: |
-          kubectl apply -f k8s/namespace.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/ingress.yaml
 
       - name: Deploy latest image to EKS
         run: |
