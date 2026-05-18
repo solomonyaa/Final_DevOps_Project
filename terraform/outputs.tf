@@ -79,7 +79,7 @@ output "vpc_endpoint_kms_id" {
   value       = aws_vpc_endpoint.kms.id
 }
 
-output "bastion_public_ip" {
-  description = "Public IP of the bastion host"
-  value       = aws_instance.bastion.public_ip
+output "bastion_instance_id" {
+  description = "Instance ID of the bastion host (use with SSM)"
+  value       = aws_instance.bastion.id
 }

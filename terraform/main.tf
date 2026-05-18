@@ -72,7 +72,7 @@ module "eks" {
 
   access_entries = {
     solomon = {
-      principal_arn = "arn:aws:iam::272495906861:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_601b9dcf2f404545"
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_601b9dcf2f404545"
       policy_associations = {
         admin = {
           policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
@@ -98,33 +98,56 @@ resource "aws_security_group" "rds_sg" {
   description = "Allow PostgreSQL access from EKS nodes"
   vpc_id      = module.vpc.vpc_id
 
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [module.eks.node_security_group_id]
-  }
-
-  ingress {
-    description     = "Allow PostgreSQL from bastion"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.bastion_sg.id]
-  }
-
-  egress {
-    description     = "Allow HTTPS to S3/CloudWatch/KMS via VPC endpoints only"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    prefix_list_ids = [aws_vpc_endpoint.s3.prefix_list_id]
-    security_groups = [aws_security_group.vpc_endpoint_sg.id]
-  }
-
   tags = {
     Project = var.project_name
   }
+}
+
+resource "aws_security_group_rule" "rds_ingress_eks" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_sg.id
+  source_security_group_id = module.eks.node_security_group_id
+
+  depends_on = [aws_security_group.rds_sg]
+}
+
+resource "aws_security_group_rule" "rds_ingress_bastion" {
+  description              = "Allow PostgreSQL from bastion"
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_sg.id
+  source_security_group_id = aws_security_group.bastion_sg.id
+
+  depends_on = [aws_security_group.rds_sg, aws_security_group.bastion_sg]
+}
+
+resource "aws_security_group_rule" "rds_egress_vpc_endpoints" {
+  description              = "Allow HTTPS to VPC endpoints"
+  type                     = "egress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_sg.id
+  source_security_group_id = aws_security_group.vpc_endpoint_sg.id
+
+  depends_on = [aws_security_group.rds_sg, aws_security_group.vpc_endpoint_sg]
+}
+
+resource "aws_security_group_rule" "rds_egress_s3" {
+  description       = "Allow HTTPS to S3 via VPC endpoint"
+  type              = "egress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  security_group_id = aws_security_group.rds_sg.id
+  prefix_list_ids   = [aws_vpc_endpoint.s3.prefix_list_id]
+
+  depends_on = [aws_security_group.rds_sg, aws_vpc_endpoint.s3]
 }
 
 # ───────────────────────────────────────────
@@ -299,17 +322,21 @@ resource "aws_security_group" "vpc_endpoint_sg" {
   description = "Allow HTTPS from RDS security group only"
   vpc_id      = module.vpc.vpc_id
 
-  ingress {
-    description     = "HTTPS from RDS only"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rds_sg.id]
-  }
-
   tags = {
     Project = var.project_name
   }
+}
+
+resource "aws_security_group_rule" "vpc_endpoint_ingress_rds" {
+  description              = "HTTPS from RDS only"
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.vpc_endpoint_sg.id
+  source_security_group_id = aws_security_group.rds_sg.id
+
+  depends_on = [aws_security_group.vpc_endpoint_sg, aws_security_group.rds_sg]
 }
 
 # ───────────────────────────────────────────
@@ -410,6 +437,71 @@ resource "aws_vpc_endpoint" "kms" {
 }
 
 # ───────────────────────────────────────────
+# SSM VPC Endpoints (bastion uses these instead of internet)
+# ───────────────────────────────────────────
+
+resource "aws_security_group" "ssm_endpoint_sg" {
+  name        = "${var.project_name}-ssm-endpoint-sg"
+  description = "Allow HTTPS from bastion only"
+  vpc_id      = module.vpc.vpc_id
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_security_group_rule" "ssm_endpoint_ingress_bastion" {
+  description              = "HTTPS from bastion only"
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ssm_endpoint_sg.id
+  source_security_group_id = aws_security_group.bastion_sg.id
+
+  depends_on = [aws_security_group.ssm_endpoint_sg, aws_security_group.bastion_sg]
+}
+
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.ssm_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.ssm_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.ssm_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+# ───────────────────────────────────────────
 # Bastion Host
 # ───────────────────────────────────────────
 
@@ -435,25 +527,33 @@ resource "aws_security_group" "bastion_sg" {
   description = "No inbound ports - SSM access only"
   vpc_id      = module.vpc.vpc_id
 
-  egress {
-    description     = "Allow PostgreSQL to RDS only"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rds_sg.id]
-  }
-
-  egress {
-    description = "Allow HTTPS to AWS SSM endpoints"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Project = var.project_name
   }
+}
+
+resource "aws_security_group_rule" "bastion_egress_rds" {
+  description              = "Allow PostgreSQL to RDS only"
+  type                     = "egress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.bastion_sg.id
+  source_security_group_id = aws_security_group.rds_sg.id
+
+  depends_on = [aws_security_group.bastion_sg, aws_security_group.rds_sg]
+}
+
+resource "aws_security_group_rule" "bastion_egress_ssm" {
+  description              = "Allow HTTPS to SSM VPC endpoints only"
+  type                     = "egress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.bastion_sg.id
+  source_security_group_id = aws_security_group.ssm_endpoint_sg.id
+
+  depends_on = [aws_security_group.bastion_sg, aws_security_group.ssm_endpoint_sg]
 }
 
 # IAM role for bastion — SSM access only
