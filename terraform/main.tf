@@ -105,8 +105,33 @@ module "eks" {
   }
 
   access_entries = {
+    # SSO console user (solomonyaa)
     solomon = {
       principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_601b9dcf2f404545"
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+    # IAM user - runs Terraform / GitHub Actions
+    solomon_github = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/Solomonyaa_Github_user"
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+    # IAM user - Shayhaba local kubectl access
+    shayhaba = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/Shayhaba"
       policy_associations = {
         admin = {
           policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
@@ -167,6 +192,11 @@ resource "aws_kms_key" "rds_key" {
 resource "aws_kms_alias" "rds_key_alias" {
   name          = "alias/${var.project_name}-rds"
   target_key_id = aws_kms_key.rds_key.key_id
+
+  # FIX: prevent AlreadyExists error on re-apply
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 # ───────────────────────────────────────────
@@ -193,6 +223,11 @@ resource "aws_iam_role" "rds_monitoring_role" {
       }
     ]
   })
+
+  # FIX: prevent EntityAlreadyExists error on re-apply
+  lifecycle {
+    ignore_changes = all
+  }
 
   tags = {
     Project = var.project_name
@@ -315,6 +350,11 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
   name       = "${var.project_name}-rds-subnet-group"
   subnet_ids = module.vpc.private_subnets
 
+  # FIX: prevent DBSubnetGroupAlreadyExists error on re-apply
+  lifecycle {
+    ignore_changes = all
+  }
+
   tags = {
     Project = var.project_name
   }
@@ -360,17 +400,29 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_endpoint_type = "Gateway"
   route_table_ids   = module.vpc.private_route_table_ids
 
+  # FIX: AllowEKSImagePull allows nodes to pull ECR image layers via S3
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowRDSMonitoringRoleOnly"
+        Sid    = "AllowRDSMonitoringRole"
         Effect = "Allow"
         Principal = {
           AWS = aws_iam_role.rds_monitoring_role.arn
         }
         Action   = ["s3:PutObject", "s3:GetObject"]
         Resource = "arn:aws:s3:::*"
+      },
+      {
+        Sid       = "AllowEKSImagePull"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::prod-${var.region}-starport-layer-bucket/*",
+          "arn:aws:s3:::amazon-eks-*/*",
+          "arn:aws:s3:::amazonlinux-2-repos-${var.region}/*"
+        ]
       }
     ]
   })
@@ -550,6 +602,11 @@ resource "aws_iam_role" "bastion_role" {
     }]
   })
 
+  # FIX: prevent EntityAlreadyExists error on re-apply
+  lifecycle {
+    ignore_changes = all
+  }
+
   tags = {
     Project = var.project_name
   }
@@ -563,6 +620,11 @@ resource "aws_iam_role_policy_attachment" "bastion_ssm" {
 resource "aws_iam_instance_profile" "bastion_profile" {
   name = "${var.project_name}-bastion-profile"
   role = aws_iam_role.bastion_role.name
+
+  # FIX: prevent EntityAlreadyExists error on re-apply
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 resource "aws_instance" "bastion" {
