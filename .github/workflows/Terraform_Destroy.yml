@@ -34,12 +34,14 @@ jobs:
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Terraform Init
         run: terraform init
         working-directory: terraform
 
-      - name: Terraform Plan Destroy (preview)
+      - name: Terraform Plan Destroy
         env:
           TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
           TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
