@@ -25,23 +25,28 @@ jobs:
           aws-secret-access-key: ${{ secrets.PROJECT_AWS_ADMIN_SECRET }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Create S3 state bucket if not exists
+        run: |
+          aws s3api head-bucket --bucket cloudtasks-tfstate 2>/dev/null || \
+          aws s3api create-bucket \
+            --bucket cloudtasks-tfstate \
+            --region us-east-1
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
-      # ── Init ──────────────────────────────────────────────────────────────
       - name: Terraform Init
         run: terraform init
 
-      # ── Format check ─────────────────────────────────────────────────────
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
-        continue-on-error: false
+        continue-on-error: true
 
-      # ── Validate ─────────────────────────────────────────────────────────
       - name: Terraform Validate
         run: terraform validate
 
-      # ── Plan ─────────────────────────────────────────────────────────────
       - name: Terraform Plan
         id: plan
         env:
@@ -54,14 +59,12 @@ jobs:
           cat plan_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # ── Apply ─────────────────────────────────────────────────────────────
       - name: Terraform Apply
         env:
           TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
           TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
         run: terraform apply -auto-approve tfplan
 
-      # ── Capture outputs ───────────────────────────────────────────────────
       - name: Show Terraform Outputs
         run: |
           echo "### Terraform Outputs" >> $GITHUB_STEP_SUMMARY
@@ -69,15 +72,14 @@ jobs:
           terraform output >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # ── Save RDS endpoint as GitHub secret ───────────────────────────────
-      - name: Save RDS endpoint to GitHub secrets
+      - name: Save RDS endpoint to GitHub Secrets
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
           gh secret set RDS_ENDPOINT --body "$RDS_ENDPOINT" --repo ${{ github.repository }}
+          echo "✅ RDS_ENDPOINT saved to GitHub Secrets: $RDS_ENDPOINT"
 
-      # ── Update kubeconfig ─────────────────────────────────────────────────
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \

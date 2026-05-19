@@ -19,6 +19,27 @@ provider "aws" {
 }
 
 # ───────────────────────────────────────────
+# Data sources
+# ───────────────────────────────────────────
+
+data "aws_caller_identity" "current" {}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
+
+# ───────────────────────────────────────────
 # VPC
 # ───────────────────────────────────────────
 
@@ -90,12 +111,147 @@ module "eks" {
 }
 
 # ───────────────────────────────────────────
+# KMS Key for RDS encryption at rest
+# ───────────────────────────────────────────
+
+resource "aws_kms_key" "rds_key" {
+  description             = "${var.project_name} RDS encryption key"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAccountRoot"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowRDSMonitoringRole"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.rds_monitoring_role.arn
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_kms_alias" "rds_key_alias" {
+  name          = "alias/${var.project_name}-rds"
+  target_key_id = aws_kms_key.rds_key.key_id
+}
+
+# ───────────────────────────────────────────
+# IAM Role for RDS Enhanced Monitoring
+# ───────────────────────────────────────────
+
+resource "aws_iam_role" "rds_monitoring_role" {
+  name = "${var.project_name}-rds-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
+  role       = aws_iam_role.rds_monitoring_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
+resource "aws_iam_role_policy" "rds_least_privilege" {
+  name = "${var.project_name}-rds-least-privilege"
+  role = aws_iam_role.rds_monitoring_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/*"
+      },
+      {
+        Sid    = "AllowKMSForEncryption"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = aws_kms_key.rds_key.arn
+      }
+    ]
+  })
+}
+
+# ───────────────────────────────────────────
+# VPC Endpoint Security Group
+# ───────────────────────────────────────────
+
+resource "aws_security_group" "vpc_endpoint_sg" {
+  name        = "${var.project_name}-vpc-endpoint-sg"
+  description = "Allow HTTPS from RDS security group only"
+  vpc_id      = module.vpc.vpc_id
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoint_ingress_rds" {
+  description                  = "HTTPS from RDS only"
+  security_group_id            = aws_security_group.vpc_endpoint_sg.id
+  referenced_security_group_id = aws_security_group.rds_sg.id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+}
+
+# ───────────────────────────────────────────
 # RDS Security Group
 # ───────────────────────────────────────────
 
 resource "aws_security_group" "rds_sg" {
   name        = "${var.project_name}-rds-sg"
-  description = "Allow PostgreSQL access from EKS nodes"
+  description = "Allow PostgreSQL access from EKS nodes and bastion"
   vpc_id      = module.vpc.vpc_id
 
   tags = {
@@ -182,153 +338,9 @@ resource "aws_db_instance" "postgres" {
 }
 
 # ───────────────────────────────────────────
-# Data sources
+# VPC Endpoints
 # ───────────────────────────────────────────
 
-data "aws_caller_identity" "current" {}
-
-# ───────────────────────────────────────────
-# KMS Key for RDS encryption at rest
-# ───────────────────────────────────────────
-
-resource "aws_kms_key" "rds_key" {
-  description             = "${var.project_name} RDS encryption key"
-  deletion_window_in_days = 7
-  enable_key_rotation     = true
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowAccountRoot"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "AllowRDSMonitoringRole"
-        Effect = "Allow"
-        Principal = {
-          AWS = aws_iam_role.rds_monitoring_role.arn
-        }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-resource "aws_kms_alias" "rds_key_alias" {
-  name          = "alias/${var.project_name}-rds"
-  target_key_id = aws_kms_key.rds_key.key_id
-}
-
-# ───────────────────────────────────────────
-# IAM Role for RDS Enhanced Monitoring
-# (least-privilege: logs + KMS only)
-# ───────────────────────────────────────────
-
-resource "aws_iam_role" "rds_monitoring_role" {
-  name = "${var.project_name}-rds-monitoring-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "monitoring.rds.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      }
-    ]
-  })
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
-  role       = aws_iam_role.rds_monitoring_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
-}
-
-resource "aws_iam_role_policy" "rds_least_privilege" {
-  name = "${var.project_name}-rds-least-privilege"
-  role = aws_iam_role.rds_monitoring_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowCloudWatchLogs"
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogStreams"
-        ]
-        Resource = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/*"
-      },
-      {
-        Sid    = "AllowKMSForEncryption"
-        Effect = "Allow"
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = aws_kms_key.rds_key.arn
-      }
-    ]
-  })
-}
-
-# ───────────────────────────────────────────
-# VPC Endpoint Security Group
-# (only accepts HTTPS from RDS SG)
-# ───────────────────────────────────────────
-
-resource "aws_security_group" "vpc_endpoint_sg" {
-  name        = "${var.project_name}-vpc-endpoint-sg"
-  description = "Allow HTTPS from RDS security group only"
-  vpc_id      = module.vpc.vpc_id
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-resource "aws_vpc_security_group_ingress_rule" "vpc_endpoint_ingress_rds" {
-  description                  = "HTTPS from RDS only"
-  security_group_id            = aws_security_group.vpc_endpoint_sg.id
-  referenced_security_group_id = aws_security_group.rds_sg.id
-  from_port                    = 443
-  to_port                      = 443
-  ip_protocol                  = "tcp"
-}
-
-# ───────────────────────────────────────────
-# VPC Endpoints (RDS egress never hits internet)
-# ───────────────────────────────────────────
-
-# S3 Gateway endpoint (free, no SG needed)
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = module.vpc.vpc_id
   service_name      = "com.amazonaws.${var.region}.s3"
@@ -355,7 +367,6 @@ resource "aws_vpc_endpoint" "s3" {
   }
 }
 
-# CloudWatch Logs interface endpoint
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
   vpc_id              = module.vpc.vpc_id
   service_name        = "com.amazonaws.${var.region}.logs"
@@ -389,7 +400,6 @@ resource "aws_vpc_endpoint" "cloudwatch_logs" {
   }
 }
 
-# KMS interface endpoint
 resource "aws_vpc_endpoint" "kms" {
   vpc_id              = module.vpc.vpc_id
   service_name        = "com.amazonaws.${var.region}.kms"
@@ -422,7 +432,7 @@ resource "aws_vpc_endpoint" "kms" {
 }
 
 # ───────────────────────────────────────────
-# SSM VPC Endpoints (bastion uses these instead of internet)
+# SSM VPC Endpoints (bastion access)
 # ───────────────────────────────────────────
 
 resource "aws_security_group" "ssm_endpoint_sg" {
@@ -484,26 +494,9 @@ resource "aws_vpc_endpoint" "ec2messages" {
 }
 
 # ───────────────────────────────────────────
-# Bastion Host
+# Bastion Host (SSM only, no SSH)
 # ───────────────────────────────────────────
 
-# Get latest Amazon Linux 2 AMI
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
-  }
-
-  filter {
-    name   = "state"
-    values = ["available"]
-  }
-}
-
-# Bastion security group — SSM only, no SSH
 resource "aws_security_group" "bastion_sg" {
   name        = "${var.project_name}-bastion-sg"
   description = "No inbound ports - SSM access only"
@@ -532,7 +525,6 @@ resource "aws_vpc_security_group_egress_rule" "bastion_egress_ssm" {
   ip_protocol                  = "tcp"
 }
 
-# IAM role for bastion — SSM access only
 resource "aws_iam_role" "bastion_role" {
   name = "${var.project_name}-bastion-role"
 
@@ -560,7 +552,6 @@ resource "aws_iam_instance_profile" "bastion_profile" {
   role = aws_iam_role.bastion_role.name
 }
 
-# Bastion EC2 instance — no public IP, no SSH key, SSM only
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.amazon_linux.id
   instance_type               = "t3.micro"
