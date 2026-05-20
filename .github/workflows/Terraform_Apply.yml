@@ -51,7 +51,7 @@ jobs:
         env:
           TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
           TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
-        run: terraform refresh
+        run: terraform plan -refresh-only -auto-approve
         continue-on-error: true
 
       - name: Import existing resources
@@ -61,6 +61,8 @@ jobs:
         run: |
           terraform import aws_iam_role.rds_monitoring_role cloudtasks-rds-monitoring-role || true
           terraform import aws_iam_role.bastion_role cloudtasks-bastion-role || true
+          # Delete and re-import subnet group to ensure it uses current VPC subnets
+          aws rds delete-db-subnet-group --db-subnet-group-name cloudtasks-rds-subnet-group --region us-east-1 || true
           terraform import aws_db_subnet_group.rds_subnet_group cloudtasks-rds-subnet-group || true
           terraform import aws_kms_alias.rds_key_alias alias/cloudtasks-rds || true
           terraform import aws_iam_instance_profile.bastion_profile cloudtasks-bastion-profile || true

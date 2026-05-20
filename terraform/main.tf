@@ -293,6 +293,15 @@ resource "aws_vpc_security_group_ingress_rule" "vpc_endpoint_ingress_rds" {
   ip_protocol                  = "tcp"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoint_ingress_eks" {
+  description                  = "HTTPS from EKS nodes"
+  security_group_id            = aws_security_group.vpc_endpoint_sg.id
+  referenced_security_group_id = module.eks.node_security_group_id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+}
+
 # ───────────────────────────────────────────
 # RDS Security Group
 # ───────────────────────────────────────────
@@ -349,11 +358,6 @@ resource "aws_vpc_security_group_egress_rule" "rds_egress_s3" {
 resource "aws_db_subnet_group" "rds_subnet_group" {
   name       = "${var.project_name}-rds-subnet-group"
   subnet_ids = module.vpc.private_subnets
-
-  # FIX: prevent DBSubnetGroupAlreadyExists error on re-apply
-  lifecycle {
-    ignore_changes = all
-  }
 
   tags = {
     Project = var.project_name
