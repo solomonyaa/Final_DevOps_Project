@@ -13,6 +13,8 @@ spec:
       labels:
         app: cloudtasks
     spec:
+      imagePullSecrets:
+      - name: dockerhub-secret
       containers:
       - name: cloudtasks
         image: shayandsolomon/cloudtasks:latest

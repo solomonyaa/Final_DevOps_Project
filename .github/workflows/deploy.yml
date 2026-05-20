@@ -25,6 +25,15 @@ jobs:
       - name: Apply namespace
         run: kubectl apply -f k8s/namespace.yaml
 
+      - name: Create DockerHub pull secret
+        run: |
+          kubectl create secret docker-registry dockerhub-secret \
+            --docker-username=${{ secrets.DOCKERHUB_USERNAME }} \
+            --docker-password=${{ secrets.DOCKERHUB_PASSWORD }} \
+            --docker-server=https://index.docker.io/v1/ \
+            --namespace=cloudtasks \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Create Kubernetes secret
         run: |
           kubectl create secret generic cloudtasks-secret \
