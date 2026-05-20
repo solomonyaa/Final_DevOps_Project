@@ -181,11 +181,6 @@ resource "aws_kms_key" "rds_key" {
 resource "aws_kms_alias" "rds_key_alias" {
   name          = "alias/${var.project_name}-rds"
   target_key_id = aws_kms_key.rds_key.key_id
-
-  # FIX: prevent AlreadyExists error on re-apply
-  lifecycle {
-    ignore_changes = all
-  }
 }
 
 # ───────────────────────────────────────────
@@ -212,11 +207,6 @@ resource "aws_iam_role" "rds_monitoring_role" {
       }
     ]
   })
-
-  # FIX: prevent EntityAlreadyExists error on re-apply
-  lifecycle {
-    ignore_changes = all
-  }
 
   tags = {
     Project = var.project_name
@@ -595,11 +585,6 @@ resource "aws_iam_role" "bastion_role" {
     }]
   })
 
-  # FIX: prevent EntityAlreadyExists error on re-apply
-  lifecycle {
-    ignore_changes = all
-  }
-
   tags = {
     Project = var.project_name
   }
@@ -613,11 +598,6 @@ resource "aws_iam_role_policy_attachment" "bastion_ssm" {
 resource "aws_iam_instance_profile" "bastion_profile" {
   name = "${var.project_name}-bastion-profile"
   role = aws_iam_role.bastion_role.name
-
-  # FIX: prevent EntityAlreadyExists error on re-apply
-  lifecycle {
-    ignore_changes = all
-  }
 }
 
 resource "aws_instance" "bastion" {
