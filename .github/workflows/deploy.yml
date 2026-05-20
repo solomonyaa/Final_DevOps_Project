@@ -53,4 +53,15 @@ jobs:
           kubectl set image deployment/cloudtasks-deployment \
             cloudtasks=${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:latest \
             --namespace=cloudtasks
+          kubectl rollout restart deployment/cloudtasks-deployment --namespace=cloudtasks
           kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks --timeout=300s
+
+      - name: Debug pod status on failure
+        if: failure()
+        run: |
+          echo "=== Pod Status ==="
+          kubectl get pods -n cloudtasks -o wide
+          echo "=== Pod Events ==="
+          kubectl describe pods -n cloudtasks | grep -A 20 "Events:"
+          echo "=== Recent Pod Logs ==="
+          kubectl logs -n cloudtasks -l app=cloudtasks --tail=50 --ignore-errors || true
