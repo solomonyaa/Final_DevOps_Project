@@ -47,13 +47,6 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Terraform Refresh
-        env:
-          TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
-          TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
-        run: terraform apply -refresh-only -auto-approve
-        continue-on-error: true
-
       - name: Import existing resources
         env:
           TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
