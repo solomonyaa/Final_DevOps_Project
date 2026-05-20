@@ -44,4 +44,4 @@ jobs:
           kubectl set image deployment/cloudtasks-deployment \
             cloudtasks=${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:latest \
             --namespace=cloudtasks
-          kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks
+          kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks --timeout=300s
