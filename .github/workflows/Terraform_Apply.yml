@@ -59,6 +59,7 @@ jobs:
           terraform import aws_db_subnet_group.rds_subnet_group cloudtasks-rds-subnet-group || true
           terraform import aws_kms_alias.rds_key_alias alias/cloudtasks-rds || true
           terraform import aws_iam_instance_profile.bastion_profile cloudtasks-bastion-profile || true
+          terraform state rm 'module.eks.module.kms.aws_kms_alias.this["cluster"]' 2>/dev/null || true
           terraform import 'module.eks.module.kms.aws_kms_alias.this["cluster"]' alias/eks/cloudtasks-cluster || true
           aws logs delete-log-group --log-group-name /aws/eks/cloudtasks-cluster/cluster --region us-east-1 || true
         continue-on-error: true
