@@ -383,33 +383,6 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_endpoint_type = "Gateway"
   route_table_ids   = module.vpc.private_route_table_ids
 
-  # FIX: AllowEKSImagePull allows nodes to pull ECR image layers via S3
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowRDSMonitoringRole"
-        Effect = "Allow"
-        Principal = {
-          AWS = aws_iam_role.rds_monitoring_role.arn
-        }
-        Action   = ["s3:PutObject", "s3:GetObject"]
-        Resource = "arn:aws:s3:::*"
-      },
-      {
-        Sid       = "AllowEKSImagePull"
-        Effect    = "Allow"
-        Principal = "*"
-        Action    = ["s3:GetObject"]
-        Resource = [
-          "arn:aws:s3:::prod-${var.region}-starport-layer-bucket/*",
-          "arn:aws:s3:::amazon-eks-*/*",
-          "arn:aws:s3:::amazonlinux-2-repos-${var.region}/*"
-        ]
-      }
-    ]
-  })
-
   tags = {
     Project = var.project_name
   }
