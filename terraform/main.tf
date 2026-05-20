@@ -118,18 +118,6 @@ module "eks" {
         }
       }
     }
-    # IAM user - runs Terraform / GitHub Actions
-    solomon_github = {
-      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/Solomonyaa_Github_user"
-      policy_associations = {
-        admin = {
-          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-          access_scope = {
-            type = "cluster"
-          }
-        }
-      }
-    }
     # IAM user - Shayhaba local kubectl access
     shayhaba = {
       principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/Shayhaba"
