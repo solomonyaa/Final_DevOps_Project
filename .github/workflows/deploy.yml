@@ -70,13 +70,15 @@ jobs:
           kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks --timeout=300s
 
       - name: Install Prometheus and Grafana
+        env:
+          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo update
           helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
             --namespace monitoring \
             --create-namespace \
-            --set "grafana.adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }}" \
+            --set-literal "grafana.adminPassword=${GRAFANA_PASSWORD}" \
             --set grafana.service.type=LoadBalancer \
             --set prometheus.prometheusSpec.retention=24h \
             --set alertmanager.enabled=false \
