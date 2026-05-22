@@ -26,6 +26,11 @@ jobs:
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.1/deploy/static/provider/aws/deploy.yaml
           kubectl wait --namespace ingress-nginx \
+            --for=condition=complete job \
+            --selector=app.kubernetes.io/component=admission-webhook \
+            --timeout=60s || true
+          kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
+          kubectl wait --namespace ingress-nginx \
             --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller \
             --timeout=120s
