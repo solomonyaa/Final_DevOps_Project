@@ -64,6 +64,32 @@ jobs:
           kubectl rollout restart deployment/cloudtasks-deployment --namespace=cloudtasks
           kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks --timeout=300s
 
+      - name: Install Prometheus and Grafana
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --create-namespace \
+            --set grafana.adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
+            --set grafana.service.type=LoadBalancer \
+            --set prometheus.prometheusSpec.retention=24h \
+            --set alertmanager.enabled=false \
+            --wait --timeout=5m
+
+      - name: Print URLs
+        run: |
+          echo "### Application URLs" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "App URL:" >> $GITHUB_STEP_SUMMARY
+          kubectl get ingress -n cloudtasks -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Grafana URL:" >> $GITHUB_STEP_SUMMARY
+          kubectl get svc -n monitoring monitoring-grafana -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Grafana login: admin / (GRAFANA_ADMIN_PASSWORD secret)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
       - name: Debug pod status on failure
         if: failure()
         run: |
