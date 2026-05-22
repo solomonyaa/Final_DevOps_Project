@@ -37,9 +37,9 @@ Final_DevOps_Project/
 │   └── workflows/
 │       ├── ci.yml                  # CI - runs on every PR to main
 │       ├── cd.yml                  # CD - builds and pushes to Docker Hub on merge
-│       ├── deploy.yml              # Deploy - manual trigger for demo day
-│       ├── Terraform_Apply.yml     # Manual - provisions AWS infrastructure
-│       └── Terraform_Destroy.yml   # Manual - destroys AWS infrastructure
+│       ├── deploy-to-eks.yml       # Deploy - manual trigger for demo day
+│       ├── terraform-apply.yml     # Manual - provisions AWS infrastructure
+│       └── terraform-destroy.yml   # Manual - destroys AWS infrastructure
 ├── frontend/                       # React UI (Vite)
 │   ├── src/
 │   │   ├── pages/                  # AuthPage, Dashboard
@@ -56,8 +56,7 @@ Final_DevOps_Project/
 ├── terraform/                      # AWS infrastructure
 │   ├── main.tf                     # VPC, EKS, RDS, KMS, bastion resources
 │   ├── variables.tf                # Input variables
-│   ├── outputs.tf                  # Output values
-│   └── terraform.tfvars            # Variable values (not committed)
+│   └── outputs.tf                  # Output values
 ├── Task_Manager.py                 # Flask REST API
 ├── Task_Module.py                  # Task, Category, Priority classes
 ├── User_Module.py                  # User model
@@ -151,7 +150,7 @@ All endpoints are prefixed with `/api`.
    - `latest` — always the newest version
    - `<commit-sha>` — unique tag per commit for rollback
 
-### Deploy (`deploy.yml`) — manual trigger on demo day
+### Deploy to EKS (`deploy-to-eks.yml`) — manual trigger on demo day
 1. Configure AWS credentials
 2. Update kubeconfig for EKS
 3. Create DockerHub pull secret
@@ -160,17 +159,18 @@ All endpoints are prefixed with `/api`.
 6. Roll out latest image to EKS deployment
 7. Debug pod status on failure
 
-### Terraform Apply (`Terraform_Apply.yml`) — manual trigger
+### Terraform Apply (`terraform-apply.yml`) — manual trigger
 1. Create S3 state bucket if not exists
 2. Terraform init, validate, plan
 3. Terraform apply
 4. Save RDS endpoint automatically to GitHub Secrets
 5. Update kubeconfig and verify EKS connection
 
-### Terraform Destroy (`Terraform_Destroy.yml`) — manual trigger with confirmation
+### Terraform Destroy (`terraform-destroy.yml`) — manual trigger with confirmation
 1. Requires typing `"destroy"` to confirm
 2. Terraform plan destroy (preview)
-3. Terraform destroy
+3. Uninstall Helm releases (NGINX, Prometheus, Grafana)
+4. Terraform destroy
 
 ---
 
@@ -254,7 +254,7 @@ Requires:
 | `OPENAI_API_KEY` | OpenAI API key |
 | `PROJECT_AWS_ADMIN_ACCESSKEY` | AWS access key ID |
 | `PROJECT_AWS_ADMIN_SECRET` | AWS secret access key |
-| `RDS_ENDPOINT` | RDS endpoint (set automatically by Terraform Apply) |
+| `RDS_ENDPOINT` | RDS endpoint (set automatically by terraform-apply.yml) |
 | `GH_PAT` | GitHub Personal Access Token (for updating secrets) |
 
 ---
