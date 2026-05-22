@@ -25,6 +25,15 @@ jobs:
       - name: Apply namespace
         run: kubectl apply -f k8s/namespace.yaml
 
+      - name: Create DockerHub pull secret
+        run: |
+          kubectl create secret docker-registry dockerhub-secret \
+            --docker-username=${{ secrets.DOCKERHUB_USERNAME }} \
+            --docker-password=${{ secrets.DOCKERHUB_PASSWORD }} \
+            --docker-server=https://index.docker.io/v1/ \
+            --namespace=cloudtasks \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Create Kubernetes secret
         run: |
           kubectl create secret generic cloudtasks-secret \
@@ -44,4 +53,19 @@ jobs:
           kubectl set image deployment/cloudtasks-deployment \
             cloudtasks=${{ secrets.DOCKERHUB_USERNAME }}/cloudtasks:latest \
             --namespace=cloudtasks
-          kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks
+          kubectl rollout restart deployment/cloudtasks-deployment --namespace=cloudtasks
+          kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks --timeout=300s
+
+      - name: Debug pod status on failure
+        if: failure()
+        run: |
+          echo "=== Pod Status ==="
+          kubectl get pods -n cloudtasks -o wide || true
+          echo "=== Describe All Pods ==="
+          kubectl describe pods -n cloudtasks || true
+          echo "=== Logs: pod 1 ==="
+          POD1=$(kubectl get pods -n cloudtasks -l app=cloudtasks -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          [ -n "$POD1" ] && kubectl logs -n cloudtasks "$POD1" --tail=80 || true
+          echo "=== Logs: pod 2 ==="
+          POD2=$(kubectl get pods -n cloudtasks -l app=cloudtasks -o jsonpath='{.items[1].metadata.name}' 2>/dev/null)
+          [ -n "$POD2" ] && kubectl logs -n cloudtasks "$POD2" --tail=80 || true

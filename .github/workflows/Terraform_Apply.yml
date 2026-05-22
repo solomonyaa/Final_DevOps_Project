@@ -47,13 +47,6 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Terraform Refresh
-        env:
-          TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
-          TF_VAR_rds_password: ${{ secrets.POSTGRES_PASSWORD }}
-        run: terraform refresh
-        continue-on-error: true
-
       - name: Import existing resources
         env:
           TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
@@ -61,9 +54,12 @@ jobs:
         run: |
           terraform import aws_iam_role.rds_monitoring_role cloudtasks-rds-monitoring-role || true
           terraform import aws_iam_role.bastion_role cloudtasks-bastion-role || true
+          # Delete and re-import subnet group to ensure it uses current VPC subnets
+          aws rds delete-db-subnet-group --db-subnet-group-name cloudtasks-rds-subnet-group --region us-east-1 || true
           terraform import aws_db_subnet_group.rds_subnet_group cloudtasks-rds-subnet-group || true
           terraform import aws_kms_alias.rds_key_alias alias/cloudtasks-rds || true
           terraform import aws_iam_instance_profile.bastion_profile cloudtasks-bastion-profile || true
+          terraform state rm 'module.eks.module.kms.aws_kms_alias.this["cluster"]' 2>/dev/null || true
           terraform import 'module.eks.module.kms.aws_kms_alias.this["cluster"]' alias/eks/cloudtasks-cluster || true
           aws logs delete-log-group --log-group-name /aws/eks/cloudtasks-cluster/cluster --region us-east-1 || true
         continue-on-error: true

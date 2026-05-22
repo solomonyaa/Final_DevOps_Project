@@ -13,6 +13,8 @@ spec:
       labels:
         app: cloudtasks
     spec:
+      imagePullSecrets:
+      - name: dockerhub-secret
       containers:
       - name: cloudtasks
         image: shayandsolomon/cloudtasks:latest
@@ -25,6 +27,13 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 12
         env:
         - name: DATABASE_URL
           valueFrom:
