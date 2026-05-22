@@ -404,7 +404,8 @@ resource "aws_vpc_endpoint" "s3" {
           "arn:aws:s3:::prod-${var.region}-starport-layer-bucket/*",
           "arn:aws:s3:::amazon-eks-*/*",
           "arn:aws:s3:::amazonlinux-2-repos-${var.region}/*",
-          "arn:aws:s3:::docker-images-prod/*"
+          "arn:aws:s3:::docker-images-prod/*",
+          "arn:aws:s3:::prod-registry-k8s-io-*/*"
         ]
       }
     ]

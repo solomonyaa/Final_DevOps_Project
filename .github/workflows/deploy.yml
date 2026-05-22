@@ -22,6 +22,14 @@ jobs:
         run: |
           aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
 
+      - name: Install NGINX Ingress Controller
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.1/deploy/static/provider/aws/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=120s
+
       - name: Apply namespace
         run: kubectl apply -f k8s/namespace.yaml
 
