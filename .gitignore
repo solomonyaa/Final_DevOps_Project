@@ -22,3 +22,5 @@ terraform/*.tfstate
 terraform/*.tfstate.backup
 
 k8s/secret.yaml
+
+*.deb
