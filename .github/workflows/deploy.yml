@@ -22,6 +22,19 @@ jobs:
         run: |
           aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
 
+      - name: Install NGINX Ingress Controller
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.1/deploy/static/provider/aws/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=complete job \
+            --selector=app.kubernetes.io/component=admission-webhook \
+            --timeout=60s || true
+          kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=120s
+
       - name: Apply namespace
         run: kubectl apply -f k8s/namespace.yaml
 
@@ -55,6 +68,36 @@ jobs:
             --namespace=cloudtasks
           kubectl rollout restart deployment/cloudtasks-deployment --namespace=cloudtasks
           kubectl rollout status deployment/cloudtasks-deployment --namespace=cloudtasks --timeout=300s
+
+      - name: Install Prometheus and Grafana
+        env:
+          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          helm uninstall monitoring -n monitoring 2>/dev/null || true
+          kubectl delete namespace monitoring 2>/dev/null || true
+          helm install monitoring prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --create-namespace \
+            --set-literal "grafana.adminPassword=${GRAFANA_PASSWORD}" \
+            --set grafana.service.type=LoadBalancer \
+            --set prometheus.prometheusSpec.retention=24h \
+            --set alertmanager.enabled=false \
+            --wait --timeout=10m
+
+      - name: Print URLs
+        run: |
+          echo "### Application URLs" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "App URL:" >> $GITHUB_STEP_SUMMARY
+          kubectl get ingress -n cloudtasks -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Grafana URL:" >> $GITHUB_STEP_SUMMARY
+          kubectl get svc -n monitoring monitoring-grafana -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Grafana login: admin / (GRAFANA_ADMIN_PASSWORD secret)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Debug pod status on failure
         if: failure()
