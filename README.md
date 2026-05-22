@@ -21,7 +21,7 @@ A cloud-native Task Manager application built with Python Flask and React, conta
 | Containerization | Docker, Docker Compose |
 | Container Orchestration | Kubernetes (AWS EKS) |
 | Infrastructure as Code | Terraform |
-| Cloud | AWS (EKS, RDS, VPC, IAM) |
+| Cloud | AWS (EKS, RDS, VPC, IAM, KMS, SSM) |
 | CI/CD | GitHub Actions |
 | Version Control | Git, GitHub |
 | AI | OpenAI GPT-4o |
@@ -35,35 +35,38 @@ A cloud-native Task Manager application built with Python Flask and React, conta
 Final_DevOps_Project/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml              # CI - runs on every PR to main
-│       ├── cd.yml              # CD - builds and pushes to Docker Hub on merge
-│       └── deploy.yml          # Deploy - manual trigger for demo day
-├── frontend/                   # React UI (Vite)
+│       ├── ci.yml                  # CI - runs on every PR to main
+│       ├── cd.yml                  # CD - builds and pushes to Docker Hub on merge
+│       ├── deploy.yml              # Deploy - manual trigger for demo day
+│       ├── Terraform_Apply.yml     # Manual - provisions AWS infrastructure
+│       └── Terraform_Destroy.yml   # Manual - destroys AWS infrastructure
+├── frontend/                       # React UI (Vite)
 │   ├── src/
-│   │   ├── pages/              # AuthPage, Dashboard
-│   │   ├── components/         # TaskCard, TaskForm, AskModal
-│   │   ├── api.js              # Axios instance
+│   │   ├── pages/                  # AuthPage, Dashboard
+│   │   ├── components/             # TaskCard, TaskForm, AskModal
+│   │   ├── api.js                  # Axios instance
 │   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
-├── k8s/                        # Kubernetes manifests
-│   ├── namespace.yaml          # cloudtasks namespace
-│   ├── deployment.yaml         # Flask app deployment (2 replicas)
-│   ├── service.yaml            # ClusterIP service
-│   └── ingress.yaml            # NGINX ingress
-├── terraform/                  # AWS infrastructure
-│   ├── main.tf                 # VPC, EKS, RDS resources
-│   ├── variables.tf            # Input variables
-│   ├── outputs.tf              # Output values
-│   └── terraform.tfvars        # Variable values (not committed)
-├── Task_Manager.py             # Flask REST API
-├── Task_Module.py              # Task, Category, Priority classes
-├── User_Module.py              # User model
-├── db.py                       # Database init
-├── test_Task_Manager.py        # pytest test suite
-├── Dockerfile                  # Multi-stage build (Node + Python)
-├── docker-compose.yml          # App + Postgres services
-├── requirements.txt            # Python dependencies
+├── k8s/                            # Kubernetes manifests
+│   ├── namespace.yaml              # cloudtasks namespace
+│   ├── deployment.yaml             # Flask app deployment (2 replicas)
+│   ├── service.yaml                # ClusterIP service
+│   └── ingress.yaml                # NGINX ingress
+├── terraform/                      # AWS infrastructure
+│   ├── main.tf                     # VPC, EKS, RDS, KMS, bastion resources
+│   ├── variables.tf                # Input variables
+│   ├── outputs.tf                  # Output values
+│   └── terraform.tfvars            # Variable values (not committed)
+├── Task_Manager.py                 # Flask REST API
+├── Task_Module.py                  # Task, Category, Priority classes
+├── User_Module.py                  # User model
+├── db.py                           # Database init
+├── test_Task_Manager.py            # pytest test suite
+├── Dockerfile                      # Multi-stage build (Node + Python)
+├── docker-compose.yml              # App + Postgres services
+├── connect-rds.sh                  # Connect to RDS via SSM tunnel
+├── requirements.txt                # Python dependencies
 └── .gitignore
 ```
 
@@ -151,33 +154,40 @@ All endpoints are prefixed with `/api`.
 ### Deploy (`deploy.yml`) — manual trigger on demo day
 1. Configure AWS credentials
 2. Update kubeconfig for EKS
-3. Create/update Kubernetes secret with DB and API credentials
-4. Apply Kubernetes manifests
-5. Roll out new image to EKS deployment
+3. Create DockerHub pull secret
+4. Create/update Kubernetes secret with DB and API credentials
+5. Apply Kubernetes manifests
+6. Roll out latest image to EKS deployment
+7. Debug pod status on failure
+
+### Terraform Apply (`Terraform_Apply.yml`) — manual trigger
+1. Create S3 state bucket if not exists
+2. Terraform init, validate, plan
+3. Terraform apply
+4. Save RDS endpoint automatically to GitHub Secrets
+5. Update kubeconfig and verify EKS connection
+
+### Terraform Destroy (`Terraform_Destroy.yml`) — manual trigger with confirmation
+1. Requires typing `"destroy"` to confirm
+2. Terraform plan destroy (preview)
+3. Terraform destroy
 
 ---
 
 ## ☁️ AWS Infrastructure (Terraform)
 
-All infrastructure is provisioned with Terraform and destroyed after the demo to avoid costs.
+All infrastructure is provisioned with Terraform and **destroyed after the demo** to avoid costs. State is stored in S3 (`cloudtasks-tfstate`) for sharing between local and CI/CD.
 
 **Resources created:**
 - VPC with public and private subnets across 3 availability zones
 - NAT Gateway for private subnet internet access
-- EKS cluster (Kubernetes 1.32) with 2 worker nodes (`t3.medium`)
-- RDS PostgreSQL 15 instance (`db.t3.micro`) in private subnets
-- Security groups restricting RDS access to EKS nodes only
-
-**To provision:**
-```bash
-cd terraform
-terraform apply
-```
-
-**To destroy:**
-```bash
-terraform destroy
-```
+- EKS cluster (latest Kubernetes version) with 2 worker nodes (`t3.medium`)
+- EKS cluster addons: `vpc-cni`, `coredns`, `kube-proxy`
+- RDS PostgreSQL 15 (`db.t3.micro`) in private subnets — encrypted with KMS
+- RDS enhanced monitoring with dedicated IAM role
+- Bastion host (SSM only, no SSH) for secure RDS access
+- VPC endpoints for SSM, KMS, CloudWatch Logs, and S3
+- Security groups with least-privilege rules
 
 ---
 
@@ -188,7 +198,7 @@ The app runs on AWS EKS with the following resources:
 | Resource | Description |
 |----------|-------------|
 | Namespace | `cloudtasks` — isolated environment |
-| Deployment | 2 Flask replicas with resource limits |
+| Deployment | 2 Flask replicas with resource limits and readiness probe |
 | Service | ClusterIP — internal load balancing |
 | Ingress | NGINX — routes external traffic |
 
@@ -216,6 +226,22 @@ Default username: `admin`
 
 ---
 
+## 🔌 Connecting to RDS
+
+To connect to the RDS database locally via the bastion host:
+
+```bash
+./connect-rds.sh
+```
+
+Requires:
+- AWS CLI configured
+- SSM Session Manager plugin installed
+- `psql` installed
+- `.env` file with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+
+---
+
 ## 🔐 GitHub Secrets Required
 
 | Secret | Description |
@@ -228,7 +254,8 @@ Default username: `admin`
 | `OPENAI_API_KEY` | OpenAI API key |
 | `PROJECT_AWS_ADMIN_ACCESSKEY` | AWS access key ID |
 | `PROJECT_AWS_ADMIN_SECRET` | AWS secret access key |
-| `RDS_ENDPOINT` | RDS endpoint (updated after terraform apply) |
+| `RDS_ENDPOINT` | RDS endpoint (set automatically by Terraform Apply) |
+| `GH_PAT` | GitHub Personal Access Token (for updating secrets) |
 
 ---
 
@@ -242,7 +269,10 @@ Default username: `admin`
 - Prompt injection hardened with XML delimiters and system prompt instructions
 - Docker container runs as non-root user
 - RDS is in a private subnet — not accessible from the internet
-- RDS security group only allows connections from EKS nodes
+- RDS encrypted at rest with AWS KMS
+- RDS security group only allows connections from EKS nodes and bastion
+- Bastion host accessible via SSM only — no open ports, no SSH keys
+- VPC endpoints for SSM, KMS, CloudWatch, S3 — no internet exposure
 
 ---
 
