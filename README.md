@@ -179,7 +179,7 @@ All endpoints are prefixed with `/api`.
 All infrastructure is provisioned with Terraform and **destroyed after the demo** to avoid costs. State is stored in S3 (`cloudtasks-tfstate`) for sharing between local and CI/CD.
 
 **Resources created:**
-- VPC with public and private subnets across 3 availability zones
+- VPC with public and private subnets across 2 availability zones (us-east-1b, us-east-1c)
 - NAT Gateway for private subnet internet access
 - EKS cluster (latest Kubernetes version) with 2 worker nodes (`t3.medium`)
 - EKS cluster addons: `vpc-cni`, `coredns`, `kube-proxy`
@@ -256,6 +256,7 @@ Requires:
 | `PROJECT_AWS_ADMIN_SECRET` | AWS secret access key |
 | `RDS_ENDPOINT` | RDS endpoint (set automatically by terraform-apply.yml) |
 | `GH_PAT` | GitHub Personal Access Token (for updating secrets) |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password (used by terraform-apply.yml) |
 
 ---
 
