@@ -36,7 +36,7 @@ export default function AuthPage() {
       <div className="auth-card">
         <div className="auth-logo">
           <span className="auth-logo-icon">✓</span>
-          <h1>TaskFlow</h1>
+          <h1>CloudTasks</h1>
         </div>
         <p className="auth-subtitle">
           {mode === 'login' ? 'Welcome back!' : 'Create your account'}
