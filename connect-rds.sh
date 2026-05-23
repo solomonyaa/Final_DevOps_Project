@@ -113,7 +113,7 @@ SSM_PID=$!
 
 # ── Wait for tunnel to be ready ───────────────────────────────
 echo "Waiting for tunnel..."
-sleep 5
+sleep 10
 
 # ── Connect to RDS ────────────────────────────────────────────
 echo -e "${GREEN}✅ Tunnel ready — connecting to RDS...${NC}"

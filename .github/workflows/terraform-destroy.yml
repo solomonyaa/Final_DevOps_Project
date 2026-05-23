@@ -48,6 +48,14 @@ jobs:
         run: terraform plan -destroy -out=destroy.tfplan
         working-directory: terraform
 
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name cloudtasks-cluster --region us-east-1
+
+      - name: Uninstall Helm releases
+        run: |
+          helm uninstall ingress-nginx -n ingress-nginx || true
+          helm uninstall kube-prometheus-stack -n monitoring || true
+
       - name: Terraform Destroy
         env:
           TF_VAR_rds_username: ${{ secrets.POSTGRES_USER }}
