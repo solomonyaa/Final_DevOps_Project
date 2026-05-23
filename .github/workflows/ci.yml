@@ -56,7 +56,7 @@ jobs:
       # ─── Check DB credentials ─────────────────────────────────────
       - name: "Check DB - verify credentials and connection"
         run: |
-          result=$(docker exec cloudstasks-db-1 psql \
+          result=$(docker exec cloudtasks-db-1 psql \
             -U ${{ secrets.POSTGRES_USER }} \
             -d ${{ secrets.POSTGRES_DB }} \
             -c "SELECT current_user, current_database();")
@@ -165,17 +165,17 @@ jobs:
       # ─── Check DB access ───────────────────────────────────────────
       - name: "Check DB - verify users table"
         run: |
-          docker exec cloudstasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
+          docker exec cloudtasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
             -c "SELECT id, username FROM users;"
 
       - name: "Check DB - verify tasks table"
         run: |
-          docker exec cloudstasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
+          docker exec cloudtasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
             -c "SELECT id, title, category, priority, is_complete FROM tasks;"
 
       - name: "Check DB - verify task was deleted"
         run: |
-          count=$(docker exec cloudstasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
+          count=$(docker exec cloudtasks-db-1 psql -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }} \
             -t -c "SELECT COUNT(*) FROM tasks;")
           echo "Tasks remaining in DB: $count"
           if [ "$count" -ne 0 ]; then echo "Expected 0 tasks but got $count"; exit 1; fi

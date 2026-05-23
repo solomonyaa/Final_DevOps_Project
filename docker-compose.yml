@@ -1,4 +1,4 @@
-name: CloudsTasks
+name: CloudTasks
 services:
   app:
     build: .

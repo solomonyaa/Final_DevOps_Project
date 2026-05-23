@@ -118,7 +118,7 @@ export default function Dashboard() {
       <aside className="sidebar">
         <div className="sidebar-logo">
           <span className="sidebar-logo-icon">✓</span>
-          <span>TaskFlow</span>
+          <span>CloudTasks</span>
         </div>
 
         <div className="sidebar-user">

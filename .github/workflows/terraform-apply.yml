@@ -116,12 +116,18 @@ jobs:
             --wait
 
       - name: Install Prometheus + Grafana
+        env:
+          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo update
           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
             --namespace monitoring \
             --create-namespace \
+            --set-literal "grafana.adminPassword=${GRAFANA_PASSWORD}" \
+            --set grafana.service.type=LoadBalancer \
+            --set prometheus.prometheusSpec.retention=24h \
+            --set alertmanager.enabled=false \
             --wait \
             --timeout 10m
 
